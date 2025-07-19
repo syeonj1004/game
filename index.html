@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>버블버블</title>
+  <style>
+    body { margin:0; background:#fff; display:flex; flex-direction:column; align-items:center; }
+    #gameContainer { position:relative; width:800px; height:600px; overflow:hidden; display:none; }
+    canvas{display:block;}
+    #startScreen, #ui { width:800px; text-align:center; font-family:sans-serif; }
+    #startScreen { display:flex; flex-direction:column; align-items:center; justify-content:center; height:600px; background:#000; color:#fff; }
+    #ui { margin-top:10px; display:none; }
+    button{padding:8px 16px; font-size:16px; margin:5px;}
+  </style>
+</head>
+<body>
+  <h1>버블버블</h1>
+  <div id="startScreen">
+    <h2>버블버블</h2>
+    <button id="startBtn">시작하기</button>
+  </div>
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+  </div>
+  <div id="ui">
+    <span id="levelDisplay">단계: 1</span> |
+    <span id="livesDisplay">목숨: 3</span>
+    <button id="restartBtn">재시작</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const startScreen = document.getElementById('startScreen');
+    const startBtn = document.getElementById('startBtn');
+    const gameContainer = document.getElementById('gameContainer');
+    const ui = document.getElementById('ui');
+    const levelDisplay = document.getElementById('levelDisplay');
+    const livesDisplay = document.getElementById('livesDisplay');
+
+    let requestId;
+    let gameStarted = false;
+
+    startBtn.addEventListener('click', () => {
+      startScreen.style.display = 'none';
+      gameContainer.style.display = 'block';
+      ui.style.display = 'block';
+      gameStarted = true;
+      initGame();
+    });
+
+    restartBtn.addEventListener('click', () => {
+      if (!gameStarted) return;
+      cancelAnimationFrame(requestId);
+      initGame();
+    });
+
+    const PLAYER_SPEED = 4, JUMP_SPEED = 20, GRAVITY = 0.6, BUBBLE_SPEED = 6;
+    const LEVEL_ENEMIES = [3,5,7], PLATFORM_Y = [150,300,450];
+    const PLATFORM_X = 100, PLATFORM_W = canvas.width - 200;
+    let keys = {};
+    document.addEventListener('keydown', e => keys[e.code] = true);
+    document.addEventListener('keyup', e => keys[e.code] = false);
+
+    class Player {
+      constructor() {
+        this.w = 40; this.h = 40;
+        this.x = (canvas.width - this.w) / 2;
+        this.y = canvas.height - this.h - 10;
+        this.vy = 0;
+        this.onGround = true;
+        this.lives = 3;
+      }
+      move() {
+        if (keys['ArrowLeft'] && this.x > 0) this.x -= PLAYER_SPEED;
+        if (keys['ArrowRight'] && this.x + this.w < canvas.width) this.x += PLAYER_SPEED;
+        if (keys['Space'] && this.onGround) { this.vy = -JUMP_SPEED; this.onGround = false; }
+        this.vy += GRAVITY;
+        this.y += this.vy;
+
+        // ground collision
+        let groundY = canvas.height - this.h - 10;
+        if (this.y > groundY) {
+          this.y = groundY;
+          this.vy = 0;
+          this.onGround = true;
+        }
+        // platform collision
+        PLATFORM_Y.forEach(py => {
+          if (this.vy > 0 && this.y + this.h >= py && this.y + this.h <= py + 10 && this.x + this.w > PLATFORM_X && this.x < PLATFORM_X + PLATFORM_W) {
+            this.y = py - this.h;
+            this.vy = 0;
+            this.onGround = true;
+          }
+        });
+      }
+      draw() {
+        const person = '🧑';
+        ctx.font = '32px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(person, this.x + this.w/2, this.y + this.h);
+      }
+    }
+
+    class Bubble {
+      constructor(x, y) { this.r = 10; this.x = x; this.y = y; this.vy = -BUBBLE_SPEED; this.trapped = false; }
+      update() { if (!this.trapped) this.y += this.vy; }
+      draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, 2*Math.PI); ctx.fillStyle = this.trapped ? '#ff69b4' : '#add8e6'; ctx.fill(); ctx.closePath(); }
+    }
+
+    class Enemy {
+      constructor(x, y, vx) { this.x = x; this.y = y; this.vx = vx; }
+      update() {
+        this.x += this.vx;
+        if (this.x < PLATFORM_X) this.vx = Math.abs(this.vx);
+        if (this.x + 40 > PLATFORM_X + PLATFORM_W) this.vx = -Math.abs(this.vx);
+      }
+      draw() {
+        const dino = '🦖';
+        ctx.font = '32px serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(dino, this.x + 20, this.y + 30);
+      }
+    }
+
+    let player, bubbles, enemies, level;
+
+    function drawBG() {
+      ctx.fillStyle = '#000'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = '#FF69B4';
+      ctx.fillRect(0,0,canvas.width,20);
+      ctx.fillRect(0,canvas.height-20,canvas.width,20);
+      ctx.fillRect(0,0,20,canvas.height);
+      ctx.fillRect(canvas.width-20,0,20,canvas.height);
+      ctx.fillStyle = '#8B0000';
+      PLATFORM_Y.forEach(py => {
+        ctx.fillRect(PLATFORM_X,py,PLATFORM_W,10);
+        ctx.fillRect(PLATFORM_X,py,10,30);
+        ctx.fillRect(PLATFORM_X+PLATFORM_W-10,py,10,30);
+      });
+    }
+
+    function spawnEnemies() {
+      enemies = [];
+      const cnt = LEVEL_ENEMIES[level-1] || 7;
+      for (let i = 0; i < cnt; i++) {
+        const ex = PLATFORM_X + (i * (PLATFORM_W - 40) / (cnt - 1));
+        const ey = PLATFORM_Y[level-1] - 40;
+        const spd = 1 + 0.5 * i;
+        const dir = i % 2 === 0 ? 1 : -1;
+        enemies.push(new Enemy(ex, ey, spd * dir));
+      }
+    }
+
+    function updateUI() { levelDisplay.textContent = `단계: ${level}`; livesDisplay.textContent = `목숨: ${player.lives}`; }
+
+    function initGame() {
+      player = new Player();
+      bubbles = [];
+      level = 1;
+      spawnEnemies();
+      updateUI();
+      gameLoop();
+    }
+
+    function gameLoop() {
+      drawBG();
+      player.move(); player.draw();
+      enemies.forEach(e => { e.update(); e.draw(); });
+      if (keys['KeyQ'] && bubbles.length < 3) { bubbles.push(new Bubble(player.x + player.w/2, player.y)); keys['KeyQ'] = false; }
+      bubbles.forEach((b, bi) => { b.update(); b.draw(); enemies.forEach(e => { if (!b.trapped && b.x > e.x && b.x < e.x + 40 && b.y - b.r < e.y + 40) b.trapped = true; }); });
+      enemies.forEach((e, ei) => { if (player.x < e.x + 40 && player.x + player.w > e.x && player.y < e.y + 40 && player.y + player.h > e.y) { player.lives--; updateUI(); enemies.splice(ei,1); if (player.lives <= 0) { cancelAnimationFrame(requestId); alert('게임 오버'); startScreen.style.display = 'flex'; gameContainer.style.display = 'none'; ui.style.display = 'none'; gameStarted = false; } } });
+      bubbles.forEach((b, bi) => { if (b.trapped) { enemies = enemies.filter(e => !(Math.hypot(b.x - (e.x+20), b.y - (e.y+30)) < b.r + 20)); bubbles.splice(bi,1); } });
+      if (enemies.length === 0) { level++; spawnEnemies(); updateUI(); }
+      requestId = requestAnimationFrame(gameLoop);
+    }
+  </script>
+</body>
+</html>
