@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>가위 바위 보 게임 (바로 실행 가능!) 😎</title>
+
+    <!-- CSS 코드가 여기에 들어있어요! 예쁘게 꾸며주는 부분이지! -->
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f0f0;
+            margin: 0;
+        }
+
+        .container {
+            text-align: center;
+            background-color: #fff;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+
+        .choices {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .choice-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 15px 20px; /* 패딩으로 버튼 크기 조절! */
+            border-radius: 8px;
+            transition: transform 0.2s ease-in-out;
+            font-size: 2em; /* 이모지랑 글씨 크기 조절! */
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .choice-btn:hover {
+            transform: scale(1.1);
+        }
+
+        #result {
+            font-size: 1.5em;
+            margin-bottom: 20px;
+            color: #555;
+        }
+
+        #scores {
+            font-size: 1.2em;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>가위 바위 보! ✊✋✌️</h1>
+        <div class="choices">
+            <button id="rock" class="choice-btn">
+                🪨<br>바위 <!-- 이모지와 글씨를 <br>로 구분했어요 -->
+            </button>
+            <button id="paper" class="choice-btn">
+                📄<br>보
+            </button>
+            <button id="scissors" class="choice-btn">
+                ✂️<br>가위
+            </button>
+        </div>
+        <div id="result">
+            결과가 여기에 표시됩니다.
+        </div>
+        <div id="scores">
+            나: <span id="user-score">0</span> 컴퓨터: <span id="computer-score">0</span>
+        </div>
+    </div>
+
+    <!-- 자바스크립트 코드가 여기에 들어있어요! 게임 규칙대로 움직이게 하는 부분이지! -->
+    <script>
+        const choices = ['rock', 'paper', 'scissors']; // 가위, 바위, 보 옵션들
+        const buttons = document.querySelectorAll('.choice-btn'); // 버튼들 가져오기
+        const resultDisplay = document.getElementById('result'); // 결과 표시될 곳
+        const userScoreDisplay = document.getElementById('user-score'); // 내 점수 표시될 곳
+        const computerScoreDisplay = document.getElementById('computer-score'); // 컴퓨터 점수 표시될 곳
+
+        let userScore = 0;
+        let computerScore = 0;
+
+        // 각 버튼에 클릭 이벤트 추가! 버튼 누르면 게임 시작!
+        buttons.forEach(button => {
+            button.addEventListener('click', (e) => {
+                const userChoice = e.currentTarget.id; // 내가 선택한 것 (rock, paper, scissors 중 하나)
+                const computerChoice = generateComputerChoice(); // 컴퓨터가 선택한 것
+                determineWinner(userChoice, computerChoice); // 누가 이겼는지 가려내기!
+            });
+        });
+
+        // 컴퓨터 선택 랜덤으로 생성! 두구두구!
+        function generateComputerChoice() {
+            const randomIndex = Math.floor(Math.random() * choices.length);
+            return choices[randomIndex];
+        }
+
+        // 누가 이겼는지 결정하고 결과 표시!
+        function determineWinner(userChoice, computerChoice) {
+            let result = ''; // 결과를 저장할 변수
+
+            if (userChoice === computerChoice) {
+                result = '비겼습니다! 🤝'; // 비겼을 때 이모지 추가!
+            } else if (
+                (userChoice === 'rock' && computerChoice === 'scissors') ||
+                (userChoice === 'paper' && computerChoice === 'rock') ||
+                (userChoice === 'scissors' && computerChoice === 'paper')
+            ) {
+                result = '당신이 이겼습니다! 🎉'; // 이겼을 때 이모지 추가!
+                userScore++; // 내 점수 올리기!
+            } else {
+                result = '컴퓨터가 이겼습니다! 😞'; // 졌을 때 이모지 추가!
+                computerScore++; // 컴퓨터 점수 올리기!
+            }
+
+            // 결과를 화면에 예쁘게 표시!
+            resultDisplay.textContent = `당신: ${translateChoice(userChoice)}, 컴퓨터: ${translateChoice(computerChoice)}. ${result}`;
+
+
+            // 점수 업데이트!
+            userScoreDisplay.textContent = userScore;
+            computerScoreDisplay.textContent = computerScore;
+        }
+
+        // 영어 단어를 귀여운 한글로 바꿔주는 함수!
+        function translateChoice(choice) {
+            switch(choice) {
+                case 'rock': return '바위🪨';
+                case 'paper': return '보📄';
+                case 'scissors': return '가위✂️';
+                default: return '';
+            }
+        }
+    </script>
+</body>
+</html>
