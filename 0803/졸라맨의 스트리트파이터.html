@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>스트리트파이터</title>
+  <style>
+    body {
+      background-color: black;
+      color: white;
+      font-family: monospace;
+      text-align: center;
+      margin: 0;
+      overflow: hidden;
+    }
+    canvas {
+      background: #222;
+      display: block;
+      margin: auto;
+    }
+    #startBtn {
+      margin: 10px;
+      padding: 10px 20px;
+      font-size: 18px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>스트리트파이터</h1>
+  <button id="startBtn">게임 시작</button>
+  <canvas id="gameCanvas" width="800" height="400"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const startBtn = document.getElementById("startBtn");
+
+    const player = { x: 100, y: 300, hp: 100, color: "cyan", isAttacking: false, kickFrame: 0 };
+    const enemy = { x: 600, y: 300, hp: 100, color: "red", isAttacking: false };
+    let gameRunning = false;
+    let playerWins = 0;
+    let enemyWins = 0;
+
+    function drawStickman(x, y, color, isKicking = false, kickFrame = 0) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y - 30, 10, 0, Math.PI * 2); // 머리
+      ctx.moveTo(x, y - 20);
+      ctx.lineTo(x, y + 20); // 몸통
+      ctx.moveTo(x - 10, y);
+      ctx.lineTo(x + 10, y); // 팔
+
+      if (isKicking && kickFrame < 10) {
+        ctx.moveTo(x - 10, y + 20);
+        ctx.lineTo(x - 20, y + 10); // 발차기 왼다리
+        ctx.moveTo(x + 10, y + 20);
+        ctx.lineTo(x + 20, y + 10); // 발차기 오른다리
+      } else {
+        ctx.moveTo(x - 10, y + 30);
+        ctx.lineTo(x, y + 20); // 왼다리
+        ctx.moveTo(x + 10, y + 30);
+        ctx.lineTo(x, y + 20); // 오른다리
+      }
+
+      ctx.stroke();
+    }
+
+    function drawHPBar(x, y, hp, label) {
+      ctx.fillStyle = "white";
+      ctx.fillText(label, x, y - 10);
+      ctx.fillStyle = "gray";
+      ctx.fillRect(x, y, 100, 10);
+      ctx.fillStyle = "lime";
+      ctx.fillRect(x, y, hp, 10);
+    }
+
+    function updateGame() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      drawStickman(player.x, player.y, player.color, player.isAttacking, player.kickFrame);
+      drawStickman(enemy.x, enemy.y, enemy.color);
+
+      drawHPBar(50, 30, player.hp, "Player");
+      drawHPBar(650, 30, enemy.hp, "Enemy");
+
+      if (player.isAttacking) {
+        player.kickFrame++;
+        if (player.kickFrame > 10) {
+          player.kickFrame = 0;
+          player.isAttacking = false;
+        }
+      }
+
+      if (player.hp <= 0 || enemy.hp <= 0) {
+        gameRunning = false;
+        const winner = player.hp <= 0 ? "Enemy" : "Player";
+        if (winner === "Player") playerWins++; else enemyWins++;
+
+        alert(`${winner} 승리! (${playerWins} : ${enemyWins})`);
+
+        player.hp = 100;
+        enemy.hp = 100;
+
+        if (playerWins === 2 || enemyWins === 2) {
+          alert(`${winner}가 2판 먼저 이겨 최종 승리!`);
+          playerWins = 0;
+          enemyWins = 0;
+        }
+      }
+
+      if (gameRunning) requestAnimationFrame(updateGame);
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (!gameRunning) return;
+      if (e.key === "ArrowLeft") player.x -= 10;
+      if (e.key === "ArrowRight") player.x += 10;
+      if (e.key === " ") {
+        if (Math.abs(player.x - enemy.x) < 30) {
+          enemy.hp -= 10;
+        }
+        player.isAttacking = true;
+        player.kickFrame = 0;
+      }
+    });
+
+    startBtn.addEventListener("click", () => {
+      gameRunning = true;
+      updateGame();
+    });
+  </script>
+</body>
+</html>
