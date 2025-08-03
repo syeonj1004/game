@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>정군잡기</title>
+  <style>
+    body {
+      margin: 0;
+      background-color: black;
+      color: white;
+      font-family: 'Courier New', monospace;
+      overflow: hidden;
+    }
+    canvas {
+      display: block;
+      margin: auto;
+      background-color: #111;
+    }
+    #startBtn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 20px 40px;
+      font-size: 24px;
+      background: #444;
+      color: white;
+      border: none;
+      cursor: pointer;
+    }
+    #scoreBoard {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 24px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas" width="800" height="600"></canvas>
+  <button id="startBtn">게임 시작</button>
+  <div id="scoreBoard">점수: 0</div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const scoreBoard = document.getElementById('scoreBoard');
+
+    let player = { x: 400, y: 550, size: 20 };
+    let bullets = [];
+    let ducks = [];
+    let score = 0;
+    let gameRunning = false;
+    let duckSpeed = 1.5;
+
+    function drawPlayer() {
+      ctx.fillStyle = 'white';
+      ctx.fillRect(player.x + 6, player.y, 8, 8); // head
+      ctx.fillRect(player.x + 4, player.y + 8, 12, 8); // body
+      ctx.fillRect(player.x + 2, player.y + 16, 4, 8); // left leg
+      ctx.fillRect(player.x + 14, player.y + 16, 4, 8); // right leg
+      ctx.fillRect(player.x, player.y + 8, 4, 6); // left arm
+      ctx.fillRect(player.x + 16, player.y + 8, 4, 6); // right arm
+    }
+
+    function drawBullet(bullet) {
+      ctx.fillStyle = 'lime';
+      ctx.fillRect(bullet.x, bullet.y, 5, 10);
+    }
+
+    function drawDuck(duck) {
+      const x = duck.x;
+      const y = duck.y;
+      ctx.fillStyle = 'silver';
+
+      // 몸체
+      ctx.fillRect(x - 20, y, 40, 10);
+
+      // 앞 동체 (코)
+      ctx.beginPath();
+      ctx.arc(x + 20, y + 5, 5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 윙
+      ctx.fillStyle = 'gray';
+      ctx.fillRect(x - 30, y + 5, 20, 5);
+      ctx.fillRect(x + 10, y + 5, 20, 5);
+
+      // 꼬리 날개
+      ctx.fillRect(x - 5, y - 8, 10, 8);
+
+      // 창문
+      ctx.fillStyle = 'blue';
+      for (let i = -15; i <= 15; i += 10) {
+        ctx.fillRect(x + i, y + 2, 4, 4);
+      }
+    }
+
+    function update() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawPlayer();
+
+      bullets.forEach((b, i) => {
+        b.y -= 5;
+        drawBullet(b);
+        if (b.y < 0) bullets.splice(i, 1);
+      });
+
+      ducks.forEach((d, di) => {
+        d.y += duckSpeed;
+        drawDuck(d);
+
+        bullets.forEach((b, bi) => {
+          if (b.x < d.x + 20 && b.x > d.x - 20 &&
+              b.y < d.y + 10 && b.y > d.y - 10) {
+            ducks.splice(di, 1);
+            bullets.splice(bi, 1);
+            score += 10;
+            scoreBoard.innerText = `점수: ${score}`;
+            if (score >= 100) endGame('승리!');
+          }
+        });
+      });
+    }
+
+    function gameLoop() {
+      if (!gameRunning) return;
+      update();
+      requestAnimationFrame(gameLoop);
+    }
+
+    function spawnDuck() {
+      if (!gameRunning || ducks.length >= 100) return;
+      ducks.push({ x: Math.random() * 720 + 40, y: 0 });
+      setTimeout(spawnDuck, 1500);
+    }
+
+    function endGame(message) {
+      gameRunning = false;
+      alert(`${message} 게임 종료!`);
+      location.reload();
+    }
+
+    canvas.addEventListener('mousemove', (e) => {
+      if (!gameRunning) return;
+      const rect = canvas.getBoundingClientRect();
+      const mouseX = e.clientX - rect.left;
+      player.x = Math.max(0, Math.min(mouseX - player.size / 2, canvas.width - player.size));
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (!gameRunning) return;
+      if (e.key === ' ' || e.key === 'Spacebar') {
+        bullets.push({ x: player.x + 10, y: player.y });
+      }
+    });
+
+    startBtn.addEventListener('click', () => {
+      startBtn.style.display = 'none';
+      gameRunning = true;
+      gameLoop();
+      spawnDuck();
+    });
+  </script>
+</body>
+</html>
