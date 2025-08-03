@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>아린이의 게임</title>
+  <style>
+    body { margin:0; padding:0; text-align:center; background:#222; color:#fff; font-family: monospace; }
+    /* 시작 화면 배경 */
+    #titleScreen { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh;
+                   background:url('title_bg.png') no-repeat center bottom; background-size:cover; position:relative; }
+    #titleScreen h1 { color:purple; font-size:48px; margin-bottom:20px; }
+    #titleScreen .speech { position:absolute; top:20%; right:20%; background:#fff; color:#000; padding:10px; border-radius:10px;
+                           font-size:18px; font-family:sans-serif; }
+    /* 게임 컨테이너 */
+    #gameContainer { display:none; position:relative; margin:20px auto; width:800px; height:600px; border:2px solid #fff; background:#111; }
+    #gameCanvas { display:block; margin:0 auto; background:#333; }
+    button { margin:10px 5px; padding:10px 20px; font-size:18px; cursor:pointer; }
+    #nextStageButton, #quitButton { display:none; }
+  </style>
+</head>
+<body>
+  <!-- 시작 화면 -->
+  <div id="titleScreen">
+    <h1>☆아린이의 게임☆</h1>
+    <div class="speech">먹이를 주세요!</div>
+    <button id="startButton">시작</button>
+  </div>
+
+  <!-- 게임 화면 -->
+  <div id="gameContainer">
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="scoreboard" style="position:absolute; top:10px; left:10px; font-size:24px;">점수: 0 &nbsp; 남은 시간: 0</div>
+  </div>
+
+  <!-- 버튼 -->
+  <button id="nextStageButton">다음 단계</button>
+  <button id="quitButton">처음으로 돌아가기</button>
+  <audio id="bgMusic" src="golden.mp3" loop></audio>
+
+  <script>
+    const titleScreen = document.getElementById('titleScreen');
+    const gameContainer = document.getElementById('gameContainer');
+    const startButton = document.getElementById('startButton');
+    const nextStageButton = document.getElementById('nextStageButton');
+    const quitButton = document.getElementById('quitButton');
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreboard = document.getElementById('scoreboard');
+    const bgMusic = document.getElementById('bgMusic');
+
+    // 설정값
+    const HAMSTER_SIZE = 32;
+    const SEED_SIZE = 16;
+    const OBSTACLE_SIZE = 32;
+    const TARGET_SEEDS = 20;
+    const LEVEL1_TIME = 60;          // 1단계 제한시간
+    const STAGE_DECREMENT = 10;      // 단계별 시간 감소량
+    const MAX_STAGE = 4;             // 최대 단계 수
+
+    let hamster = { x:100, y:0, vy:0, onGround:true };
+    let seeds = [], obstacles = [];
+    let keys = {}, score = 0, timeLeft = 0;
+    let timerInterval, gameRunning = false, currentStage = 1;
+
+    // 타이틀 -> 게임 화면 전환
+    function showGame() {
+      titleScreen.style.display = 'none';
+      gameContainer.style.display = 'block';
+    }
+
+    // 단계 초기화
+    function setupStage(stage) {
+      const groundY = canvas.height - HAMSTER_SIZE - 50;
+      hamster = { x:100, y:groundY, vy:0, onGround:true };
+      seeds = [];
+      for (let i = 0; i < TARGET_SEEDS; i++) {
+        seeds.push({
+          x: Math.random()*(canvas.width - SEED_SIZE),
+          y: groundY - Math.random()*150
+        });
+      }
+      obstacles = [];
+      for (let i = 0; i < 15; i++) {
+        obstacles.push({
+          x: Math.random()*(canvas.width - OBSTACLE_SIZE),
+          y: groundY - OBSTACLE_SIZE,
+          width: OBSTACLE_SIZE, height: OBSTACLE_SIZE
+        });
+      }
+      score = 0;
+      timeLeft = Math.max(10, LEVEL1_TIME - (stage-1)*STAGE_DECREMENT);
+      updateScoreboard();
+    }
+
+    function updateScoreboard() {
+      scoreboard.textContent = `단계 ${currentStage}/${MAX_STAGE} - 점수: ${score}/${TARGET_SEEDS} &nbsp; 남은 시간: ${timeLeft.toFixed(1)}s`;
+    }
+
+    // 타이머 시작
+    function startTimer() {
+      clearInterval(timerInterval);
+      timerInterval = setInterval(() => {
+        timeLeft -= 0.1;
+        if (timeLeft <= 0) endGame(false);
+        updateScoreboard();
+      }, 100);
+    }
+
+    // 단계 시작
+    function startStage(stage) {
+      currentStage = stage;
+      setupStage(stage);
+      startTimer();
+      bgMusic.play();
+      gameRunning = true;
+      nextStageButton.style.display = 'none';
+      quitButton.style.display = 'none';
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 시작 버튼
+    startButton.addEventListener('click', () => {
+      showGame();
+      startStage(1);
+    });
+
+    // 다음 단계 버튼
+    nextStageButton.addEventListener('click', () => {
+      startStage(currentStage+1);
+    });
+
+    // 그만하기 버튼
+    quitButton.addEventListener('click', () => {
+      location.reload();
+    });
+
+    // 게임 종료
+    function endGame(win) {
+      gameRunning = false;
+      clearInterval(timerInterval);
+      bgMusic.pause();
+      if (win) {
+        if (currentStage >= MAX_STAGE) {
+          alert(`최종 승리! ${MAX_STAGE}단계 완료`);
+          quitButton.style.display = 'inline-block';
+        } else {
+          alert(`🎉 단계 ${currentStage} 클리어!`);
+          nextStageButton.style.display = 'inline-block';
+        }
+      } else {
+        alert('⏰ 시간 종료! 다시 시도하세요.');
+        titleScreen.style.display = 'flex';
+      }
+    }
+
+    // 게임 루프
+    function gameLoop() {
+      if (!gameRunning) return;
+      update(); draw();
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 상태 업데이트
+    function update() {
+      const groundY = canvas.height - HAMSTER_SIZE - 50;
+      if (keys['ArrowLeft']) hamster.x -= 4;
+      if (keys['ArrowRight']) hamster.x += 4;
+      hamster.vy += 0.5;
+      hamster.y += hamster.vy;
+      if (hamster.y >= groundY) { hamster.y=groundY; hamster.vy=0; hamster.onGround=true; }
+      hamster.x = Math.max(0, Math.min(canvas.width-HAMSTER_SIZE, hamster.x));
+
+      seeds = seeds.filter(s => {
+        if (s.x < hamster.x+HAMSTER_SIZE && s.x+SEED_SIZE > hamster.x && s.y < hamster.y+HAMSTER_SIZE && s.y+SEED_SIZE > hamster.y) {
+          score++; updateScoreboard(); return false;
+        }
+        return true;
+      });
+
+      obstacles.forEach(o => {
+        if (hamster.x < o.x+o.width && hamster.x+HAMSTER_SIZE > o.x && hamster.y+HAMSTER_SIZE > o.y) {
+          if (keys['ArrowRight']) hamster.x -=4;
+          if (keys['ArrowLeft']) hamster.x +=4;
+        }
+      });
+
+      if (score>=TARGET_SEEDS) endGame(true);
+    }
+
+    // 그리기
+    function draw() {
+      ctx.fillStyle='#555'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#A0522D'; ctx.fillRect(0,canvas.height-50,canvas.width,50);
+      ctx.fillStyle='#800000'; obstacles.forEach(o=>ctx.fillRect(o.x,o.y,o.width,o.height));
+      ctx.fillStyle='#fff'; ctx.fillRect(hamster.x,hamster.y,HAMSTER_SIZE,HAMSTER_SIZE);
+      ctx.fillStyle='#FFD700'; seeds.forEach(s=>ctx.fillRect(s.x,s.y,SEED_SIZE,SEED_SIZE));
+    }
+
+    // 입력
+    window.addEventListener('keydown', e => {
+      if (e.code==='Space'&&hamster.onGround){e.preventDefault();hamster.vy=-12;hamster.onGround=false;}
+      keys[e.key]=true;
+    });
+    window.addEventListener('keyup', e=>{keys[e.key]=false;});
+  </script>
+</body>
+</html>
