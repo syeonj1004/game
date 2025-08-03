@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>갤러그 게임</title>
+  <style>
+    body {
+      background-color: #000;
+      color: #fff;
+      text-align: center;
+      font-family: Arial, sans-serif;
+    }
+    #gameCanvas {
+      background-color: #111;
+      display: block;
+      margin: 20px auto;
+      border: 2px solid #555;
+    }
+    button {
+      padding: 10px 20px;
+      margin: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      background-color: #222;
+      color: #fff;
+      border: 1px solid #555;
+      border-radius: 4px;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    #hud {
+      margin-top: 10px;
+      font-size: 18px;
+    }
+    #hud span {
+      margin: 0 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>갤러그 게임</h1>
+
+  <!-- 점수판, 생명 및 단계 표시 -->
+  <div id="hud">
+    <span id="scoreDisplay">점수: 0</span>
+    <span id="livesDisplay">생명: 3</span>
+    <span id="levelDisplay">단계: 1</span>
+  </div>
+
+  <canvas id="gameCanvas" width="480" height="640"></canvas>
+
+  <!-- 시작 및 재시작 버튼 -->
+  <div>
+    <button id="startBtn">시작</button>
+    <button id="restartBtn" disabled>재시작</button>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 이미지 로드
+    const enemyImg = new Image();
+    //enemyImg.src = '전투기.png';
+enemyImg.src = 'dino.png';
+    const playerImg = new Image();
+    //playerImg.src = '주인공.png';
+
+playerImg.src = 'dino.png';
+
+    // 게임 변수
+    let player, bullets, enemies, enemyMissiles;
+    let score, lives, level, enemySpeed;
+    let keys = {};
+    let gameInterval, spawnInterval;
+
+    function initGame() {
+      player = { x: canvas.width/2 - 20, y: canvas.height - 60, width: 40, height: 40, speed: 5 };
+      bullets = [];
+      enemies = [];
+      enemyMissiles = [];
+      score = 0;
+      lives = 3;
+      level = 1;
+      enemySpeed = 1;
+      updateHUD();
+    }
+
+    function updateHUD() {
+      document.getElementById('scoreDisplay').textContent = `점수: ${score}`;
+      document.getElementById('livesDisplay').textContent = `생명: ${lives}`;
+      document.getElementById('levelDisplay').textContent = `단계: ${level}`;
+    }
+
+    function startGame() {
+      initGame();
+      document.getElementById('startBtn').disabled = true;
+      document.getElementById('restartBtn').disabled = false;
+      gameInterval = setInterval(gameLoop, 1000/60);
+      spawnInterval = setInterval(spawnEnemy, 2000);
+    }
+
+    function restartGame() {
+      clearInterval(gameInterval);
+      clearInterval(spawnInterval);
+      initGame();
+      gameInterval = setInterval(gameLoop, 1000/60);
+      spawnInterval = setInterval(spawnEnemy, 2000);
+    }
+
+    function gameOver() {
+      clearInterval(gameInterval);
+      clearInterval(spawnInterval);
+      ctx.fillStyle = '#fff';
+      ctx.font = '36px Arial';
+      ctx.fillText('게임 오버', canvas.width/2 - 90, canvas.height/2);
+    }
+
+    function spawnEnemy() {
+      const x = Math.random() * (canvas.width - 40);
+      enemies.push({ x: x, y: -40, width: 40, height: 40 });
+    }
+
+    function isColliding(a, b) {
+      return a.x < b.x + b.width &&
+             a.x + a.width > b.x &&
+             a.y < b.y + b.height &&
+             a.y + a.height > b.y;
+    }
+
+    function gameLoop() {
+      update();
+      draw();
+    }
+
+    function update() {
+      if (keys['ArrowLeft'] && player.x > 0) player.x -= player.speed;
+      if (keys['ArrowRight'] && player.x + player.width < canvas.width) player.x += player.speed;
+
+      bullets.forEach((b, i) => { b.y -= b.speed; if (b.y + b.height < 0) bullets.splice(i, 1); });
+
+      enemies.forEach((e, ei) => {
+        e.y += enemySpeed;
+        if (e.y > canvas.height) enemies.splice(ei, 1);
+        if (Math.random() < 0.01) {
+          enemyMissiles.push({ x: e.x + e.width/2 - 5, y: e.y + e.height, width: 10, height: 20, speed: 3 });
+        }
+      });
+
+      enemyMissiles.forEach((m, mi) => {
+        m.y += m.speed;
+        if (isColliding(m, player)) {
+          lives--;
+          enemyMissiles.splice(mi, 1);
+          updateHUD();
+          if (lives <= 0) gameOver();
+        } else if (m.y > canvas.height) {
+          enemyMissiles.splice(mi, 1);
+        }
+      });
+
+      bullets.forEach((b, bi) => {
+        enemies.forEach((e, ei) => {
+          if (isColliding(b, e)) {
+            bullets.splice(bi, 1);
+            enemies.splice(ei, 1);
+            score += 5;
+            updateHUD();
+            if (score >= 100 * level) { level++; enemySpeed++; updateHUD(); }
+          }
+        });
+      });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // 플레이어 (이미지)
+      ctx.drawImage(playerImg, player.x, player.y, player.width, player.height);
+      // 적 (이미지)
+      enemies.forEach(e => ctx.drawImage(enemyImg, e.x, e.y, e.width, e.height));
+      // 총알
+      ctx.fillStyle = '#ff0';
+      bullets.forEach(b => ctx.fillRect(b.x, b.y, b.width, b.height));
+      // 적 미사일
+      ctx.fillStyle = '#00f';
+      enemyMissiles.forEach(m => ctx.fillRect(m.x, m.y, m.width, m.height));
+    }
+
+    document.addEventListener('keydown', e => {
+      keys[e.key] = true;
+      if (e.key === ' ' || e.key === 'Spacebar') bullets.push({ x: player.x + player.width/2 - 5, y: player.y, width: 10, height: 20, speed: 7 });
+    });
+    document.addEventListener('keyup', e => keys[e.key] = false);
+
+    document.getElementById('startBtn').addEventListener('click', startGame);
+    document.getElementById('restartBtn').addEventListener('click', restartGame);
+  </script>
+</body>
+</html>
