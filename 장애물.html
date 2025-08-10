@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>2D 네온 픽셀 — 방향키 이동 + 스페이스 점프 + 포털 이동 + 가시 7개 + 경로 추가 + HP 소진 시 재시작</title>
+  <style>
+    :root{ --bg:#090b14; --neon-cyan:#00fff7; --neon-magenta:#ff00e6; --neon-green:#00ff85; --danger:#ff3b3b; }
+    html,body{height:100%;margin:0;background:var(--bg);color:#e6f1ff;font-family:sans-serif}
+    .stage{position:relative;width:min(92vw,960px);aspect-ratio:16/9;margin:16px auto;overflow:hidden;background:#060713}
+    canvas{width:100%;height:100%;display:block;image-rendering:pixelated}
+    .hud{position:absolute;left:10px;top:10px;display:flex;gap:6px;z-index:2}
+    .heart{width:14px;height:14px;background:#ff557a;transform:rotate(-45deg);border-radius:2px;position:relative}
+    .heart::before,.heart::after{content:"";position:absolute;width:8px;height:12px;background:#ff557a;border-radius:8px 8px 0 0;top:1px}
+    .heart::before{left:3px}.heart::after{right:3px}
+    .heart.empty{opacity:.25;filter:grayscale(1)}
+  </style>
+</head>
+<body>
+  <div class="stage">
+    <div class="hud" id="hpHud"></div>
+    <canvas id="game" width="320" height="180"></canvas>
+  </div>
+  <script>
+    const canvas=document.getElementById('game');
+    const ctx=canvas.getContext('2d');
+    const hpHud=document.getElementById('hpHud');
+
+    const world={ w:320,h:180,gravity:0.45,platforms:[],hazards:[],portal:{x:292,y:0,w:14,h:44} };
+    const player={ x:20,y:140,w:14,h:14,vx:0,vy:0,speed:0.76,jump:7.6,onGround:false,hp:3,maxHp:3,stage:1 };
+    const keys={left:false,right:false,up:false};
+
+    function rectOverlap(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
+
+    function makeStage(){
+      world.platforms=[];world.hazards=[];
+      world.platforms.push({x:0,y:160,w:320,h:20});
+      world.portal={x:292,y:0,w:14,h:44};
+      for(let i=0;i<6;i++){
+        world.platforms.push({x:60+i*40,y:140-i*20,w:30,h:8});
+      }
+      for(let i=0;i<4;i++){
+        let px=Math.random()*260+20;
+        let py=Math.random()*120+20;
+        world.platforms.push({x:px,y:py,w:30,h:8});
+      }
+      for(let i=0;i<7;i++){
+        const plat=world.platforms[Math.floor(Math.random()*world.platforms.length)];
+        const spikeX = plat.x + plat.w - 12;
+        world.hazards.push({x:spikeX,y:plat.y-6,w:12,h:6});
+      }
+      player.x=20;player.y=140;player.vx=0;player.vy=0;player.onGround=false;player.hp=player.maxHp;
+      updateHPHud();
+    }
+
+    function updateHPHud(){
+      hpHud.innerHTML='';
+      for(let i=0;i<player.maxHp;i++){
+        const div=document.createElement('div');
+        div.className='heart'+(i<player.hp?'':' empty');
+        hpHud.appendChild(div);
+      }
+    }
+
+    function checkHazards(){
+      for(const hz of world.hazards){
+        if(rectOverlap(player,hz)){
+          player.vy=-3.5;player.vx*=-0.6;player.y-=2;
+          if(player.hp>0){player.hp-=1;updateHPHud();}
+          if(player.hp<=0){restartGame();}
+        }
+      }
+    }
+
+    function checkPortal(){
+      if(rectOverlap(player,world.portal)){
+        player.stage++;
+        makeStage();
+      }
+    }
+
+    function update(){
+      if(keys.left) player.vx=-player.speed;
+      else if(keys.right) player.vx=player.speed;
+      else player.vx=0;
+
+      player.vy+=world.gravity;
+      player.x+=player.vx;
+      player.y+=player.vy;
+
+      player.onGround=false;
+      for(const plat of world.platforms){
+        if(rectOverlap({x:player.x,y:player.y,w:player.w,h:player.h},{x:plat.x,y:plat.y,w:plat.w,h:plat.h}) && player.vy>=0){
+          player.y=plat.y-player.h;
+          player.vy=0;
+          player.onGround=true;
+        }
+      }
+      checkHazards();
+      checkPortal();
+    }
+
+    function render(){
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#0a0f2a';ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle='#00fff7';
+      for(const p of world.platforms){ctx.fillRect(p.x,p.y,p.w,p.h);}
+      ctx.fillStyle='#ff3b3b';
+      for(const hz of world.hazards){ctx.beginPath();ctx.moveTo(hz.x,hz.y+hz.h);ctx.lineTo(hz.x+hz.w/2,hz.y);ctx.lineTo(hz.x+hz.w,hz.y+hz.h);ctx.closePath();ctx.fill();}
+      ctx.fillStyle='#00ff85';ctx.fillRect(player.x,player.y,player.w,player.h);
+      const prt=world.portal;ctx.fillStyle='#ff00e6';ctx.fillRect(prt.x,prt.y,prt.w,prt.h);
+    }
+
+    function restartGame(){
+      makeStage();
+    }
+
+    function loop(){update();render();requestAnimationFrame(loop);}
+
+    document.addEventListener('keydown',e=>{
+      if(e.code==='ArrowLeft') keys.left=true;
+      if(e.code==='ArrowRight') keys.right=true;
+      if(e.code==='ArrowUp' || e.code==='Space'){
+        if(player.onGround){player.vy=-player.jump;player.onGround=false;}
+      }
+    });
+    document.addEventListener('keyup',e=>{
+      if(e.code==='ArrowLeft') keys.left=false;
+      if(e.code==='ArrowRight') keys.right=false;
+    });
+
+    makeStage();
+    loop();
+  </script>
+</body>
+</html>
