@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>희주 게임 — 과일 먹기 슈팅</title>
+  <style>
+    /* ===== 기본 레이아웃 & 스타일 ===== */
+    :root {
+      --bg: #0f172a;        /* 페이지 배경 (슬레이트 남색) */
+      --panel: #111827;     /* 카드 배경 */
+      --acc: #22d3ee;       /* 포인트 색 */
+      --text: #e5e7eb;      /* 본문 텍스트 */
+      --muted: #9ca3af;     /* 서브 텍스트 */
+      --win: #22c55e;
+      --lose: #ef4444;
+    }
+    html, body {
+      height: 100%;
+    }
+    body {
+      margin: 0;
+      background: radial-gradient(60% 60% at 50% 40%, #111827, var(--bg));
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Apple SD Gothic Neo, sans-serif;
+      display: grid;
+      place-items: center;
+    }
+
+    .wrap {
+      width: min(980px, 94vw);
+    }
+    h1 {
+      text-align: center;
+      letter-spacing: 0.02em;
+      margin: 20px 0 10px;
+    }
+    .card {
+      background: linear-gradient(180deg, #0b1220, var(--panel));
+      border: 1px solid #1f2937;
+      border-radius: 18px;
+      padding: 16px;
+      box-shadow: 0 10px 30px rgba(0,0,0,.35);
+    }
+
+    /* 상단 HUD */
+    .hud {
+      display: grid;
+      grid-template-columns: 1fr auto auto auto;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 12px;
+      padding: 8px 10px;
+      border-radius: 12px;
+      background: #0b1220;
+      border: 1px solid #1f2937;
+    }
+    .stat { font-weight: 600; }
+    .badge { padding: 6px 10px; border-radius: 999px; background: #0d1322; border: 1px solid #1f2937; color: var(--muted); }
+    .btn { cursor: pointer; padding: 8px 14px; border-radius: 10px; border: 1px solid #1f2937; background: #0d1322; color: var(--text); font-weight: 700; }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* 캔버스 컨테이너 */
+    .stage {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      border: 1px solid #1f2937;
+      background: #ffffff; /* ✅ 요구사항: 캔버스 박스(배경)을 흰색으로 */
+      display: grid;
+      place-items: center;
+    }
+    canvas { display: block; width: 100%; height: auto; }
+
+    /* 시작 화면 (컴퓨터 이미지 버튼) */
+    .start-screen {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: rgba(15, 23, 42, 0.86);
+      backdrop-filter: blur(2px);
+      z-index: 10;
+    }
+    .start-card {
+      background: #0b1220;
+      border: 1px solid #1f2937;
+      border-radius: 16px;
+      padding: 22px 20px 14px;
+      text-align: center;
+      box-shadow: 0 12px 30px rgba(0,0,0,.45);
+      max-width: 520px;
+    }
+    .start-card h2 { margin: 0 0 10px; }
+    .start-tip { color: var(--muted); font-size: 14px; margin-top: 6px; }
+    .computer-btn { margin-top: 10px; cursor: pointer; border: none; background: transparent; }
+    .computer-btn:focus { outline: 2px solid var(--acc); border-radius: 8px; }
+
+    /* 결과 오버레이 */
+    .overlay {
+      position: absolute; inset: 0; display: none; place-items: center;
+      background: rgba(15,23,42,.88); z-index: 12; backdrop-filter: blur(2px);
+    }
+    .overlay.show { display: grid; }
+    .result {
+      background: #0b1220; border: 1px solid #1f2937; border-radius: 16px;
+      padding: 22px; text-align: center; max-width: 420px;
+      box-shadow: 0 12px 30px rgba(0,0,0,.45);
+    }
+    .result h3 { margin: 6px 0 2px; }
+    .result .msg { color: var(--muted); margin-bottom: 12px; }
+
+    /* 레벨업 토스트 */
+    .toast { position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+      padding: 8px 14px; border-radius: 999px; background: #ecfeff; color: #0c4a6e;
+      border: 1px solid #bae6fd; font-weight: 800; display: none; z-index: 11;
+      box-shadow: 0 6px 18px rgba(0,0,0,.22);
+    }
+    .toast.show { display: inline-block; animation: pop .9s ease both; }
+    @keyframes pop { 0% { transform: translate(-50%, -10px) scale(.9); opacity: 0 } 20% { opacity: 1 } 70% { transform: translate(-50%, 0) scale(1.02)} 100% { transform: translate(-50%, 0) scale(1)} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🎮 희주 게임 — 과일 먹기 슈팅</h1>
+
+    <div class="card">
+      <!-- 상단 HUD -->
+      <div class="hud">
+        <div class="stat">목표 과일: <strong id="goal">20</strong>개</div>
+        <div class="badge">점수: <strong id="score">0</strong></div>
+        <div class="badge">수집: <strong id="collected">0</strong>개</div>
+        <button id="restartBtn" class="btn" disabled>다시 시작</button>
+      </div>
+
+      <!-- 게임 스테이지 -->
+      <div class="stage" style="aspect-ratio: 16/9;">
+        <canvas id="game" width="960" height="540" aria-label="희주 게임 캔버스"></canvas>
+
+        <!-- 레벨업 토스트 -->
+        <div class="toast" id="toast">LEVEL UP!</div>
+
+        <!-- 시작 화면 (컴퓨터 이미지 클릭 시 시작) -->
+        <div id="start" class="start-screen" role="dialog" aria-modal="true">
+          <div class="start-card">
+            <h2>컴퓨터를 클릭해서 시작!</h2>
+            <div class="start-tip">방향키로 청소년 캐릭터를 움직여 과일(🍎🍌🍇🍓 등)을 먹으세요.<br>벽(장애물)에 부딪히면 게임 오버, 과일을 많이 먹으면 레벨이 올라가요.</div>
+            <button id="startBtn" class="computer-btn" aria-label="게임 시작">
+              <!-- ✅ 외부 파일 없이 동작하는 컴퓨터 SVG 아이콘 -->
+              <svg width="160" height="120" viewBox="0 0 160 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <rect x="10" y="12" width="140" height="86" rx="10" fill="#0ea5e9" stroke="#38bdf8" stroke-width="4"/>
+                <rect x="20" y="22" width="120" height="60" rx="6" fill="#111827"/>
+                <rect x="55" y="88" width="50" height="8" rx="4" fill="#94a3b8"/>
+                <rect x="40" y="98" width="80" height="10" rx="5" fill="#cbd5e1"/>
+              </svg>
+            </button>
+            <div class="start-tip">⚠️ 과일 20개를 모으면 승리합니다. (개수는 코드 상단에서 쉽게 변경 가능)</div>
+          </div>
+        </div>
+
+        <!-- 결과 오버레이 (승/패 공용) -->
+        <div id="overlay" class="overlay">
+          <div class="result" id="resultBox">
+            <div id="resultEmoji" style="font-size:44px;">🎉</div>
+            <h3 id="resultTitle">승리!</h3>
+            <div class="msg" id="resultMsg">수고했어요! 레벨업을 거듭하며 목표를 달성했어요.</div>
+            <button id="againBtn" class="btn" style="margin-top:10px;">다시 하기</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <p style="text-align:center; color: var(--muted); margin: 10px 0 0; font-size: 14px;">조작: 방향키 ← ↑ → ↓ · 시작: 컴퓨터 클릭 · 소리: 없음</p>
+  </div>
+
+  <script>
+    // ==========================
+    //  희주 게임 메인 스크립트
+    //  - 요구사항 요약 -
+    //   • 시작 조건: 컴퓨터(이미지) 클릭
+    //   • 조작: 방향키
+    //   • 목표: 과일 많이 먹기 (수집 개수 도달 시 승리)
+    //   • 점수: 과일 1개마다 5점
+    //   • 게임 오버: 벽(장애물)과 충돌
+    //   • 난이도: 레벨이 오를수록 속도/빈도 증가 + LEVEL UP 표시
+    //   • 과일/캐릭터는 이모지 사용, 캔버스 배경은 흰색
+    // ==========================
+
+    // ====== 설정값 (필요시 여기만 수정) ======
+    const GOAL_FRUITS = 20;             // ✅ 승리 조건: 수집해야 할 과일 개수
+    const FRUIT_SCORE = 5;              // ✅ 과일 1개당 점수
+    const BASE_PLAYER_SPEED = 3.2;      // 플레이어 기본 속도 (px/frame)
+    const BASE_FRUIT_SPAWN_MS = 900;    // 과일 생성 주기(낮을수록 자주 생성)
+    const BASE_FRUIT_SPEED = 1.2;       // 과일 이동 속도
+    const BASE_WALL_SPEED = 0.8;        // 벽 이동 속도
+    const FRUITS_PER_LEVEL = 5;         // 레벨업 기준 (수집 n개마다 레벨 +1)
+
+    // ====== 캔버스/컨텍스트 ======
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // 고해상도 디스플레이 스케일 대응
+    function fixDPR() {
+      const ratio = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+      const { width, height } = canvas;
+      canvas.width = width * ratio;
+      canvas.height = height * ratio;
+      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    }
+    fixDPR();
+    window.addEventListener('resize', fixDPR);
+
+    // ====== DOM 참조 ======
+    const elScore = document.getElementById('score');
+    const elCollected = document.getElementById('collected');
+    const elGoal = document.getElementById('goal');
+    const startScreen = document.getElementById('start');
+    const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const overlay = document.getElementById('overlay');
+    const againBtn = document.getElementById('againBtn');
+    const resultTitle = document.getElementById('resultTitle');
+    const resultMsg = document.getElementById('resultMsg');
+    const resultEmoji = document.getElementById('resultEmoji');
+    const toast = document.getElementById('toast');
+
+    elGoal.textContent = GOAL_FRUITS;
+
+    // ====== 게임 상태 ======
+    const state = {
+      running: false,
+      over: false,
+      level: 1,
+      score: 0,
+      collected: 0,
+      keys: new Set(),
+      lastSpawn: 0,
+      rngSeed: Math.random()*1e9,
+    };
+
+    // 간단한 RNG (시드 고정 가능)
+    function rand() {
+      state.rngSeed ^= state.rngSeed << 13; state.rngSeed ^= state.rngSeed >> 17; state.rngSeed ^= state.rngSeed << 5;
+      return Math.abs(state.rngSeed) / 2**31;
+    }
+
+    // 이모지 리소스
+    const FRUITS = ['🍎','🍌','🍇','🍓','🍊','🍐','🍍','🥝'];
+    const PLAYER_EMOJI = '🧑'; // 청소년 느낌 이모지
+
+    // 엔티티 컨테이너
+    const player = { x: 120, y: 120, size: 28 };
+    /** 과일: {x, y, vx, vy, size, emoji} */
+    const fruits = [];
+    /** 벽(장애물): {x, y, w, h, vx, vy}  - 벽과 부딪히면 게임 오버 */
+    const walls = [];
+
+    // 초기 벽 생성 (캔버스 중앙 근처에 몇 개 배치, 좌우/상하로 왕복 이동)
+    function setupWalls() {
+      walls.length = 0;
+      const ws = 18; // 벽 두께
+      const W = canvas.width / (window.devicePixelRatio||1);
+      const H = canvas.height / (window.devicePixelRatio||1);
+      // 수평 벽 2개
+      walls.push({ x: W*0.18, y: H*0.40, w: W*0.64, h: ws, vx: BASE_WALL_SPEED, vy: 0 });
+      walls.push({ x: W*0.10, y: H*0.70, w: W*0.58, h: ws, vx: -BASE_WALL_SPEED, vy: 0 });
+      // 수직 벽 2개
+      walls.push({ x: W*0.35, y: H*0.18, w: ws, h: H*0.42, vx: 0, vy: BASE_WALL_SPEED });
+      walls.push({ x: W*0.70, y: H*0.10, w: ws, h: H*0.50, vx: 0, vy: -BASE_WALL_SPEED });
+    }
+
+    // 레벨에 따른 속도 보정
+    function levelScale(base) {
+      return base * (1 + (state.level-1)*0.18);
+    }
+
+    // 과일 생성
+    function spawnFruit() {
+      const W = canvas.width / (window.devicePixelRatio||1);
+      const H = canvas.height / (window.devicePixelRatio||1);
+      const pad = 24;
+      // 플레이어와 너무 가까운 곳은 피해서 생성
+      let x = pad + rand()*(W - pad*2);
+      let y = pad + rand()*(H - pad*2);
+      if (Math.hypot(x-player.x, y-player.y) < 80) {
+        x = (x + 120) % (W - pad) + pad;
+        y = (y + 90) % (H - pad) + pad;
+      }
+      const angle = rand()*Math.PI*2;
+      const speed = levelScale(BASE_FRUIT_SPEED) * (0.6 + rand()*0.8);
+      fruits.push({
+        x, y,
+        vx: Math.cos(angle)*speed,
+        vy: Math.sin(angle)*speed,
+        size: 28 + rand()*10,
+        emoji: FRUITS[(Math.random()*FRUITS.length)|0]
+      });
+    }
+
+    // 충돌 유틸
+    function rectsIntersect(ax, ay, aw, ah, bx, by, bw, bh) {
+      return ax < bx + bw && ax + aw > bx && ay < by + bh && ay + ah > by;
+    }
+
+    // 플레이어 이동 처리
+    function updatePlayer(dt) {
+      const speed = levelScale(BASE_PLAYER_SPEED);
+      if (state.keys.has('ArrowLeft'))  player.x -= speed;
+      if (state.keys.has('ArrowRight')) player.x += speed;
+      if (state.keys.has('ArrowUp'))    player.y -= speed;
+      if (state.keys.has('ArrowDown'))  player.y += speed;
+
+      // 화면 경계 제한 (벽 충돌로 게임 오버가 아니라 경계는 지나가지 못하게만)
+      const W = canvas.width / (window.devicePixelRatio||1);
+      const H = canvas.height / (window.devicePixelRatio||1);
+      const s = player.size;
+      player.x = Math.max(6, Math.min(W - s - 6, player.x));
+      player.y = Math.max(6, Math.min(H - s - 6, player.y));
+    }
+
+    // 과일 이동 + 수집 판정
+    function updateFruits(dt) {
+      const W = canvas.width / (window.devicePixelRatio||1);
+      const H = canvas.height / (window.devicePixelRatio||1);
+      for (let i = fruits.length - 1; i >= 0; i--) {
+        const f = fruits[i];
+        f.x += f.vx; f.y += f.vy;
+        // 벽/경계에 부딪히면 살짝 튕김
+        if (f.x < 6 || f.x > W - f.size - 6) f.vx *= -1;
+        if (f.y < 6 || f.y > H - f.size - 6) f.vy *= -1;
+        // 플레이어 수집 판정 (이모지를 사각형으로 간주)
+        if (rectsIntersect(player.x, player.y, player.size, player.size, f.x, f.y, f.size, f.size)) {
+          fruits.splice(i, 1);
+          state.collected += 1;
+          state.score += FRUIT_SCORE;
+          elCollected.textContent = state.collected;
+          elScore.textContent = state.score;
+
+          // 레벨업 체크
+          const newLevel = Math.floor(state.collected / FRUITS_PER_LEVEL) + 1;
+          if (newLevel > state.level) {
+            state.level = newLevel;
+            showToast();
+            // 레벨이 오르면 과일을 보너스로 몇 개 더 생성
+            for (let k=0;k<2;k++) spawnFruit();
+            // 벽 속도도 살짝 증가
+            for (const w of walls) { w.vx *= 1.12; w.vy *= 1.12; }
+          }
+
+          // 승리 조건
+          if (state.collected >= GOAL_FRUITS) {
+            endGame(true);
+            return;
+          }
+        }
+      }
+    }
+
+    // 벽(장애물) 이동 + 충돌
+    function updateWalls(dt) {
+      const W = canvas.width / (window.devicePixelRatio||1);
+      const H = canvas.height / (window.devicePixelRatio||1);
+      for (const w of walls) {
+        w.x += w.vx; w.y += w.vy;
+        // 화면 가장자리에서 반사
+        if (w.x <= 0 || w.x + w.w >= W) w.vx *= -1;
+        if (w.y <= 0 || w.y + w.h >= H) w.vy *= -1;
+
+        // 플레이어와 충돌하면 게임 오버
+        if (rectsIntersect(player.x, player.y, player.size, player.size, w.x, w.y, w.w, w.h)) {
+          endGame(false);
+          return;
+        }
+      }
+    }
+
+    // 렌더링 (화이트 배경 위에 드로잉)
+    function draw() {
+      const W = canvas.width / (window.devicePixelRatio||1);
+      const H = canvas.height / (window.devicePixelRatio||1);
+
+      // 배경(흰색) + 그리드 살짝
+      ctx.save();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 0.05;
+      ctx.strokeStyle = '#64748b';
+      for (let x = 0; x < W; x += 24) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y < H; y += 24) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+      ctx.restore();
+
+      // 벽(장애물)
+      for (const w of walls) {
+        ctx.fillStyle = '#111827';
+        ctx.strokeStyle = '#0ea5e9';
+        ctx.lineWidth = 2;
+        ctx.fillRect(w.x, w.y, w.w, w.h);
+        ctx.strokeRect(w.x, w.y, w.w, w.h);
+      }
+
+      // 과일 이모지 (그림자 추가로 가시성 ↑)
+      for (const f of fruits) {
+        drawEmoji(f.emoji, f.x, f.y, f.size);
+      }
+
+      // 플레이어 (청소년 이모지)
+      drawEmoji(PLAYER_EMOJI, player.x, player.y, player.size);
+
+      // HUD in-canvas (레벨 표시)
+      ctx.save();
+      ctx.font = 'bold 18px system-ui, Apple SD Gothic Neo, sans-serif';
+      ctx.fillStyle = '#0c4a6e';
+      ctx.fillText(`LEVEL ${state.level}`, 12, 24);
+      ctx.restore();
+    }
+
+    // 이모지 드로잉 도우미: 텍스트 그림자 + 중앙 정렬
+    function drawEmoji(char, x, y, size) {
+      ctx.save();
+      ctx.font = `${size}px Apple Color Emoji, Segoe UI Emoji, Noto Color Emoji, Noto Emoji, sans-serif`;
+      ctx.textBaseline = 'top';
+      ctx.shadowColor = 'rgba(0,0,0,.25)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetY = 2;
+      ctx.fillText(char, x, y);
+      ctx.restore();
+    }
+
+    // 메인 루프
+    let last = 0, rafId = null;
+    function loop(ts) {
+      if (!state.running) return;
+      if (!last) last = ts;
+      const dt = Math.min(32, ts - last);
+      last = ts;
+
+      // 주기적으로 과일 생성 (레벨이 올라가면 더 자주 등장)
+      if (ts - state.lastSpawn > BASE_FRUIT_SPAWN_MS / (1 + (state.level-1)*0.22)) {
+        state.lastSpawn = ts;
+        if (fruits.length < 40) spawnFruit();
+      }
+
+      updatePlayer(dt);
+      updateFruits(dt);
+      updateWalls(dt);
+      draw();
+
+      rafId = requestAnimationFrame(loop);
+    }
+
+    // 토스트 (LEVEL UP)
+    let toastTimer = null;
+    function showToast() {
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 1100);
+    }
+
+    // 게임 시작/리셋/종료 관리
+    function startGame() {
+      // 상태 초기화
+      state.running = true; state.over = false; state.level = 1; state.score = 0; state.collected = 0;
+      elScore.textContent = '0'; elCollected.textContent = '0';
+      player.x = 120; player.y = 120; player.size = 34; // 시작 시 조금 더 큼 → 가시성
+      fruits.length = 0; setupWalls();
+      startScreen.style.display = 'none'; overlay.classList.remove('show');
+      restartBtn.disabled = true;
+      cancelAnimationFrame(rafId); last = 0; state.lastSpawn = 0;
+      // 시작 시 과일 몇 개 미리 배치
+      for (let i=0;i<6;i++) spawnFruit();
+      loop(performance.now());
+    }
+
+    function endGame(win) {
+      if (state.over) return;
+      state.over = true; state.running = false;
+      restartBtn.disabled = false;
+      cancelAnimationFrame(rafId);
+      // 결과 UI
+      overlay.classList.add('show');
+      if (win) {
+        resultEmoji.textContent = '🏆';
+        resultTitle.textContent = '승리!';
+        resultTitle.style.color = 'var(--win)';
+        resultMsg.textContent = `과일 ${state.collected}개를 모아 목표를 달성했어요. 점수 ${state.score}점!`;
+      } else {
+        resultEmoji.textContent = '💥';
+        resultTitle.textContent = '게임 오버';
+        resultTitle.style.color = 'var(--lose)';
+        resultMsg.textContent = `벽에 충돌했어요. 수집 ${state.collected}개 · 점수 ${state.score}점`;
+      }
+    }
+
+    function resetToTitle() {
+      // 타이틀 화면으로 복귀 (다시 시작 버튼)
+      state.running = false; state.over = false;
+      overlay.classList.remove('show');
+      startScreen.style.display = 'grid';
+    }
+
+    // ====== 입력 처리 (방향키) ======
+    window.addEventListener('keydown', (e) => {
+      const keys = ['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'];
+      if (keys.includes(e.key)) { e.preventDefault(); state.keys.add(e.key); }
+      if (e.key === 'Enter' && startScreen.style.display !== 'none') startGame();
+    });
+    window.addEventListener('keyup', (e) => { state.keys.delete(e.key); });
+
+    // 버튼 바인딩
+    startBtn.addEventListener('click', startGame);
+    againBtn.addEventListener('click', startGame);
+    restartBtn.addEventListener('click', resetToTitle);
+
+    // 접근성: 포커스가 시작 버튼에 가도록
+    setTimeout(() => startBtn.focus(), 100);
+  </script>
+</body>
+</html>

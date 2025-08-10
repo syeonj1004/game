@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>나란다 끝말잇기</title>
+  <style>
+    /* ====== 기본 리셋/레이아웃 ====== */
+    :root{
+      --bg:#0b0f17;
+      --panel:#111827;
+      --accent:#00e5ff;
+      --accent2:#ff4d9d;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+      --muted:#9aa3b2;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; background:radial-gradient(1200px 600px at 50% -10%,#13203b 0%, var(--bg) 40%  );
+      color:#e5e7eb; font-family: "Pretendard", "Apple SD Gothic Neo", system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif;
+      display:flex; align-items:center; justify-content:center; padding:24px;
+    }
+    .game{
+      width:min(980px, 100%); background:linear-gradient(180deg, #0f172a 0%, #0b1223 60%, #0a0f1d 100%);
+      border:1px solid #1f2937; border-radius:24px; box-shadow:0 20px 60px rgba(0,0,0,.5), inset 0 0 40px rgba(255,255,255,0.02);
+      padding:20px 20px 24px; position:relative; overflow:hidden;
+    }
+
+    /* ====== 상단 네온 점수 ====== */
+    .scorebar{
+      text-align:center; font-weight:800; font-size: clamp(20px, 3.2vw, 36px);
+      letter-spacing:1px; margin:4px 0 14px; position:relative;
+      color:#e0faff;
+      text-shadow: 0 0 7px rgba(0,229,255,.9), 0 0 18px rgba(0,229,255,.5), 0 0 48px rgba(0,229,255,.25);
+    }
+    .scorebar small{display:block; font-weight:600; opacity:.8; font-size: .55em; margin-top:6px; color:#aef7ff}
+
+    /* ====== 캐릭터 영역 ====== */
+    .avatars{display:flex; justify-content:space-between; align-items:center; gap:16px; padding:8px 14px 4px}
+    .avatar{display:flex; align-items:center; gap:12px}
+    .emoji{
+      font-size: clamp(42px, 7vw, 72px);
+      filter: drop-shadow(0 4px 12px rgba(0,0,0,.5));
+    }
+    /* 병아리(주인공) 날개 파닥파닥 느낌의 살짝 둥실둥실 애니메이션 */
+    .emoji.chick{ animation: bob 1.1s ease-in-out infinite; transform-origin:50% 100%;}
+    @keyframes bob{ 0%,100%{ transform: translateY(0) rotate(0deg);} 50%{ transform: translateY(-6px) rotate(-1deg);} }
+    .name{font-weight:700; font-size:18px; color:#cbd5e1}
+
+    /* ====== 영역 구분 ====== */
+    .row{display:grid; grid-template-columns:1.1fr .9fr; gap:18px; margin-top:12px}
+    .panel{background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,.08); border-radius:16px; padding:14px; min-height:220px}
+    .panel h3{margin:0 0 8px; font-size:16px; color:#b7c3d6; font-weight:700}
+
+    /* ====== 로그 ====== */
+    .log{height:260px; overflow:auto; background:rgba(0,0,0,.18); border-radius:12px; padding:10px; border:1px solid rgba(255,255,255,.06)}
+    .entry{padding:8px 10px; border-radius:8px; margin:6px 0; line-height:1.4}
+    .entry.you{background:rgba(34,197,94,.08); border:1px solid rgba(34,197,94,.25)}
+    .entry.ai{background:rgba(0,229,255,.08); border:1px solid rgba(0,229,255,.25)}
+    .tag{display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; margin-right:8px}
+    .tag.you{background:rgba(34,197,94,.2); color:#9CF1B9}
+    .tag.ai{background:rgba(0,229,255,.2); color:#aef7ff}
+
+    /* ====== 입력/상태 ====== */
+    .need{font-size:18px; color:#a5b4fc; margin:10px 0 6px}
+    .used{height:140px; overflow:auto; background:rgba(255,255,255,.03); border:1px dashed rgba(255,255,255,.08); border-radius:10px; padding:8px}
+    .used b{color:#93c5fd}
+
+    .inputbar{display:flex; gap:10px; margin-top:10px}
+    input[type=text]{
+      flex:1; background:#0b1223; border:1px solid #1f2a44; color:#e5e7eb; border-radius:12px; padding:14px 14px; font-size:16px;
+      outline:none; box-shadow: inset 0 0 0 2px transparent; transition: .2s;
+    }
+    input[type=text]:focus{box-shadow: inset 0 0 0 2px var(--accent)}
+    button{
+      background: linear-gradient(180deg, #101c38 0%, #0a142a 100%);
+      border:1px solid #1f2a44; color:#e6f6ff; border-radius:12px; padding:12px 16px; font-weight:700; cursor:pointer; transition:.15s;
+    }
+    button:hover{transform:translateY(-1px); box-shadow:0 6px 18px rgba(0,229,255,.15)}
+
+    /* 시작(킹콩) 버튼 */
+    .startwrap{display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; padding:12px 0 4px}
+    .startbtn{
+      font-size:72px; line-height:1; background:transparent; border:none; filter: drop-shadow(0 6px 18px rgba(0,0,0,.5)); cursor:pointer;
+      transition:.2s; border-radius:16px; padding:8px; user-select:none;
+    }
+    .startbtn:hover{ transform: scale(1.05) rotate(-2deg);}
+    .startlabel{font-weight:700; color:#aef7ff}
+
+    /* ====== 카운트다운 바 ====== */
+    .timerwrap{height:10px; background:#0f1a34; border:1px solid #1c2e57; border-radius:999px; overflow:hidden; margin-top:10px}
+    .timerbar{height:100%; width:0%; background:linear-gradient(90deg, #2dd4bf, #22d3ee); transition: width .2s linear}
+    .timertext{font-size:13px; color:#bcd5ff; text-align:right; margin-top:4px}
+
+    /* ====== 상태 토스트 ====== */
+    .toast{position:absolute; left:50%; top:16px; transform:translateX(-50%); background:rgba(9, 29, 51, .8); border:1px solid rgba(0,229,255,.35); color:#e0faff; padding:10px 14px; border-radius:999px; font-weight:700; pointer-events:none; opacity:0; transition:.2s}
+    .toast.show{opacity:1}
+
+    /* ====== 승리/패배 모달 ====== */
+    .modal{ position:fixed; inset:0; display:none; place-items:center; background:rgba(0,0,0,.6)}
+    .modal.on{display:grid}
+    .dialog{ background:#0b1223; border:1px solid #274069; border-radius:18px; padding:20px; width:min(520px, 92%); text-align:center }
+    .dialog h2{margin:0 0 8px}
+    .dialog p{margin:8px 0 14px; color:#cbd5e1}
+    .dialog .actions{display:flex; gap:10px; justify-content:center}
+
+    /* 반응형 */
+    @media (max-width:820px){ .row{grid-template-columns:1fr} .log{height:220px} }
+  </style>
+</head>
+<body>
+  <div class="game" id="game">
+    <!-- 상단 네온 점수판 -->
+    <div class="scorebar" id="scorebar">🐥 0  <span style="opacity:.7">vs</span>  0 🦍
+      <small>주인공 vs 적 (점수) — 30초 안에 답하세요!</small>
+    </div>
+
+    <!-- 캐릭터 표시 -->
+    <div class="avatars">
+      <div class="avatar"><span class="emoji chick" aria-label="주인공">🐥</span><span class="name">주인공</span></div>
+      <div class="avatar"><span class="name">적 (컴퓨터)</span><span class="emoji" aria-label="적">🦍</span></div>
+    </div>
+
+    <!-- 시작 버튼(킹콩 클릭) -->
+    <div class="startwrap" id="startwrap">
+      <button class="startbtn" id="startBtn" title="킹콩을 클릭해 시작!">🦍</button>
+      <div class="startlabel">킹콩(🦍)을 클릭하면 시작</div>
+    </div>
+
+    <div class="row">
+      <!-- 좌: 대화 로그 / 타이머 -->
+      <div class="panel">
+        <h3>게임 로그</h3>
+        <div class="log" id="log" aria-live="polite"></div>
+        <div class="timerwrap"><div class="timerbar" id="timerbar"></div></div>
+        <div class="timertext" id="timertext">남은 시간: 30.0초</div>
+      </div>
+
+      <!-- 우: 상태/입력 -->
+      <div class="panel">
+        <h3>입력 & 상태</h3>
+        <div class="need" id="need">시작을 누르면 컴퓨터가 제시어를 냅니다.</div>
+        <div class="used" id="used">사용된 단어: <b>(없음)</b></div>
+        <div class="inputbar">
+          <input id="wordInput" type="text" placeholder="한글로 단어를 입력하세요" inputmode="text" disabled />
+          <button id="submitBtn" disabled>입력</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast">메시지</div>
+
+    <!-- 승패 모달 -->
+    <div class="modal" id="modal">
+      <div class="dialog">
+        <h2 id="modalTitle">게임 종료</h2>
+        <p id="modalDesc"></p>
+        <div class="actions">
+          <button id="restartBtn">다시 시작</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/**
+ * 나란다 끝말잇기 — 순수 JS
+ * 요구사항 반영:
+ * - 킹콩(🦍) 클릭으로 시작
+ * - 30초 제한, 시간 내 미입력 시 게임오버
+ * - 10초 미만 20점 / 20초 미만 10점 / 30초 이하 5점 (주인공 점수)
+ * - 20회 정답 시 승리
+ * - 상단 중앙 네온 스타일 점수(주인공 vs 적)
+ * - 이모지 크고 선명, 병아리 살짝 애니메이션
+ */
+
+// 간단 한국어 단어 목록 (명사/이름/외래어 포함, 예시)
+// 실제 게임성 향상을 위해 200~500어 수준으로 확장 가능
+const DICT = [
+  "사과","과자","자전거","거울","울음","음악","악기","기차","차표","표범","범고래","래퍼","퍼즐","즐거움","움막","막걸리","리본","본능","능선","선물","물감","감자","자석","석류","류현진","진주","주차장","장미","미로","로봇","봄비","비누","누나","나무","무지개","개미","미역","역사","사랑","랑비","비행기","기러기","기도","도넛","트럭","커피","피아노","노트","트램","램프","프린터","터널","널판지","지구","구두","두부","부엌","엑스레이","이불","불꽃","꽃병","병아리","리어카","카메라","라면","면도기","기름","름보","보리","리본","본드","드럼","럼주","주머니","니모","모자","자석","석탄","탄산","산소","소나무","무당벌레","레몬","몬스터","터미널","널빤지","지갑","갑옷","옷걸이","이글루","루프탑","탑승권","권투","투수","수박","박수","수학","학용품","품절","절구","구름","름프","프라모델","델리만쥬","쥬스","스케이트","트램펄린","린스","스탬프","프라이팬","팬티","티셔츠","츠키","키오스크","크레파스","스노우볼","볼펜","펜촉","촉감","감기","기도문","문어","어항","항공기","기관차","차돌박이","이삿짐","짐볼","볼링","링거","거미","미술","술잔","잔디","디딤돌","돌고래","래미안","안경","경복궁","궁전","전자레인지","지노","노래","레코드","드라이버","버스","스키","키위","위성","성냥","냥이","이어폰","폰케이스","스프링","링콘","콘서트","트로피","피구","구슬","슬리퍼","퍼포먼스","스튜디오","오렌지","지렁이","이야기","기도문","문신","신발","발레","레몬에이드","드론","론도","도시","시계","계단","단풍","풍선","선풍기","기왓장","장갑","갑판","판다","다람쥐","쥐덫","덫질","질소","소파","파전","전화","화분","분수","수면","면봉","봉투","투명","명함","함정","정답"
+];
+
+// 유틸: 한글만 허용 (가-힣, 띄어쓰기/하이픈 제거)
+function sanitize(word){
+  return word.replace(/\s|-/g,"").replace(/[^가-힣]/g,"");
+}
+
+function lastChar(word){ return word[word.length-1]; }
+function firstChar(word){ return word[0]; }
+
+// 상태
+let used = new Set();
+let playerScore = 0;
+let aiScore = 0; // 간단히: 컴퓨터가 단어를 성공적으로 내면 +10점
+let playerAnswers = 0; // 플레이어가 맞춘 횟수
+let expectedFirst = null; // 다음 단어의 첫 글자
+let timerId = null;
+let startTs = 0;
+let alive = false;
+
+// 엘리먼트 참조
+const $log = document.getElementById('log');
+const $used = document.getElementById('used');
+const $need = document.getElementById('need');
+const $scorebar = document.getElementById('scorebar');
+const $timerbar = document.getElementById('timerbar');
+const $timertext = document.getElementById('timertext');
+const $input = document.getElementById('wordInput');
+const $submit = document.getElementById('submitBtn');
+const $start = document.getElementById('startBtn');
+const $startwrap = document.getElementById('startwrap');
+const $toast = document.getElementById('toast');
+const $modal = document.getElementById('modal');
+const $modalTitle = document.getElementById('modalTitle');
+const $modalDesc = document.getElementById('modalDesc');
+const $restart = document.getElementById('restartBtn');
+
+function toast(msg){
+  $toast.textContent = msg; $toast.classList.add('show');
+  setTimeout(()=> $toast.classList.remove('show'), 1000);
+}
+
+function logEntry(type, text){
+  const div = document.createElement('div');
+  div.className = 'entry ' + (type==='you'?'you':'ai');
+  const tag = `<span class="tag ${type==='you'?'you':'ai'}">${type==='you'?'🐥 주인공':'🦍 적'}</span>`;
+  div.innerHTML = `${tag}${text}`;
+  $log.appendChild(div);
+  $log.scrollTop = $log.scrollHeight;
+}
+
+function updateUsed(){
+  if(!used.size){ $used.innerHTML = '사용된 단어: <b>(없음)</b>'; return; }
+  $used.innerHTML = '사용된 단어: ' + Array.from(used).map(w=>`<b>${w}</b>`).join(', ');
+}
+
+function updateScore(){
+  $scorebar.innerHTML = `🐥 ${playerScore} <span style="opacity:.7">vs</span> ${aiScore} 🦍<small>주인공 vs 적 (점수) — ${playerAnswers}/20 회 진행</small>`;
+}
+
+function setExpectedNext(char){
+  expectedFirst = char;
+  $need.innerHTML = `다음 단어의 첫 글자: <b style="color:#60a5fa">${char ?? '자유'}</b>`;
+}
+
+function enableInput(on){
+  $input.disabled = !on; $submit.disabled = !on; if(on){ $input.focus(); }
+}
+
+// 타이머 제어 (30초)
+function startTimer(){
+  stopTimer();
+  const limit = 30.0; // seconds
+  startTs = performance.now();
+  $timerbar.style.width = '0%';
+  $timertext.textContent = `남은 시간: ${limit.toFixed(1)}초`;
+  timerId = requestAnimationFrame(function tick(){
+    const elapsed = (performance.now() - startTs)/1000;
+    const remain = Math.max(0, limit - elapsed);
+    const ratio = Math.min(1, elapsed/limit);
+    $timerbar.style.width = `${ratio*100}%`;
+    $timertext.textContent = `남은 시간: ${remain.toFixed(1)}초`;
+    if(remain <= 0){
+      // 시간초과 → 게임오버
+      stopTimer();
+      gameOver('시간 초과! 30초 안에 답을 입력하지 못했습니다.');
+      return;
+    }
+    timerId = requestAnimationFrame(tick);
+  });
+}
+function stopTimer(){ if(timerId){ cancelAnimationFrame(timerId); timerId = null; } }
+
+// 점수 계산 (응답 시간 기반)
+function scoreFromResponseSec(sec){
+  if(sec < 10) return 20;
+  if(sec < 20) return 10;
+  return 5; // 30초 이하
+}
+
+// 단어 유효성 체크
+function isValidNewWord(userWord){
+  if(!userWord) return {ok:false, msg:'단어를 입력하세요.'};
+  if(!/^[가-힣]+$/.test(userWord)) return {ok:false, msg:'한글만 입력 가능해요.'};
+  if(userWord.length < 2) return {ok:false, msg:'2글자 이상 단어만 허용해요.'};
+  if(used.has(userWord)) return {ok:false, msg:'이미 사용된 단어예요.'};
+  if(expectedFirst && firstChar(userWord) !== expectedFirst) return {ok:false, msg:`'${expectedFirst}'(으)로 시작해야 해요.`};
+  return {ok:true};
+}
+
+// 컴퓨터가 낼 단어 찾기
+function aiPick(nextFirst){
+  const candidates = DICT.filter(w => firstChar(w) === nextFirst && !used.has(w));
+  if(candidates.length === 0) return null;
+  // 간단 랜덤
+  return candidates[Math.floor(Math.random()*candidates.length)];
+}
+
+function aiTurn(prevWord){
+  const need = lastChar(prevWord);
+  const pick = aiPick(need);
+  if(!pick){
+    logEntry('ai', `단어를 찾지 못했어요… 주인공의 승리! 🏆`);
+    return gameWin('컴퓨터가 이어갈 단어를 찾지 못했습니다. 축하합니다!');
+  }
+  used.add(pick);
+  aiScore += 10; // 간단한 적 점수 규칙
+  updateScore();
+  logEntry('ai', `"${pick}"`);
+  setExpectedNext(lastChar(pick));
+  startTimer();
+  enableInput(true);
+}
+
+function onSubmit(){
+  if(!alive) return;
+  const raw = $input.value.trim();
+  const word = sanitize(raw);
+  const check = isValidNewWord(word);
+  if(!check.ok){ toast(check.msg); return; }
+  // 정답!
+  stopTimer();
+  const elapsed = (performance.now() - startTs)/1000;
+  const gained = scoreFromResponseSec(elapsed);
+  playerScore += gained;
+  playerAnswers += 1;
+  updateScore();
+  used.add(word);
+  logEntry('you', `"${word}"  <small style="color:#9ad6ff">(+${gained}점 / ${elapsed.toFixed(1)}초)</small>`);
+  $input.value = '';
+  updateUsed();
+
+  // 20회 달성 시 승리
+  if(playerAnswers >= 20){
+    return gameWin('목표 20회 달성! 멋져요!');
+  }
+
+  // 다음: 컴퓨터 차례
+  enableInput(false);
+  setTimeout(()=> aiTurn(word), 450); // 약간의 텀으로 자연스럽게
+}
+
+function gameWin(msg){
+  alive = false; enableInput(false); stopTimer();
+  $modalTitle.textContent = '승리! 🏆';
+  $modalDesc.innerHTML = `${msg}<br><br><b>최종 점수</b> — 🐥 ${playerScore} : ${aiScore} 🦍`;
+  $modal.classList.add('on');
+}
+
+function gameOver(msg){
+  alive = false; enableInput(false); stopTimer();
+  $modalTitle.textContent = '게임 오버 💥';
+  $modalDesc.innerHTML = `${msg}<br><br><b>최종 점수</b> — 🐥 ${playerScore} : ${aiScore} 🦍`;
+  $modal.classList.add('on');
+}
+
+function reset(){
+  used.clear(); playerScore=0; aiScore=0; playerAnswers=0; expectedFirst=null; alive=false;
+  updateScore(); updateUsed(); setExpectedNext(null);
+  $log.innerHTML = '';
+  $startwrap.style.display = '';
+  enableInput(false);
+  stopTimer();
+  $timerbar.style.width = '0%';
+  $timertext.textContent = '남은 시간: 30.0초';
+}
+
+function start(){
+  reset();
+  alive = true;
+  $startwrap.style.display = 'none';
+
+  // 컴퓨터가 시작 제시어를 냄
+  const startWord = DICT[Math.floor(Math.random()*DICT.length)];
+  used.add(startWord);
+  logEntry('ai', `시작 제시어는 "${startWord}" 입니다.`);
+  updateUsed();
+  setExpectedNext(lastChar(startWord));
+  enableInput(true);
+  startTimer();
+}
+
+// 이벤트 바인딩
+$submit.addEventListener('click', onSubmit);
+$input.addEventListener('keydown', (e)=>{ if(e.key==='Enter') onSubmit(); });
+$start.addEventListener('click', start);
+$restart.addEventListener('click', ()=>{ $modal.classList.remove('on'); start(); });
+
+// 초기화
+reset();
+</script>
+</body>
+</html>

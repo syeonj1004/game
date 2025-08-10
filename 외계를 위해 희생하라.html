@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>외계를 위해 희생하라</title>
+  <!-- 픽셀 느낌 폰트 -->
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+  <style>
+    /* —— 전역 스타일 —— */
+    :root{
+      --ui-bg:#0b0f1a;      /* UI 패널 배경 */
+      --ui-fg:#e7f2ff;      /* UI 글자 */
+      --ui-ac:#5bd5ff;      /* 강조 색 */
+      --btn:#131b2b;        /* 버튼 배경 */
+      --btn-h:#1a2540;      /* 버튼 hover */
+      --danger:#ff4d6d;     /* 폭탄/폭발 */
+      --win:#70ff8a;        /* 승리 색 */
+      --lose:#ffd166;       /* 종료 색 */
+    }
+    html,body{height:100%;}
+    body{
+      margin:0;
+      background:#000; /* 캔버스 외부 배경 */
+      color:var(--ui-fg);
+      font-family:"Press Start 2P", system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", sans-serif;
+      display:flex; align-items:center; justify-content:center;
+    }
+    .wrap{position:relative; width:960px; max-width:96vw;}
+    canvas{
+      width:100%; height:auto; image-rendering: pixelated; /* 픽셀 아트 느낌 */
+      background:#000; display:block; border:2px solid #222; border-radius:12px; box-shadow:0 10px 40px rgba(0,0,0,.6);
+    }
+
+    /* —— HUD —— */
+    .hud{
+      position:absolute; inset:0; pointer-events:none; /* 클릭은 밑의 캔버스로 */
+      display:flex; flex-direction:column; justify-content:space-between;
+      padding:12px; box-sizing:border-box;
+    }
+    .row{display:flex; gap:10px; align-items:center;}
+    .panel{
+      pointer-events:auto; /* 버튼 클릭 가능하게 */
+      background:linear-gradient(180deg, rgba(11,15,26,.9), rgba(11,15,26,.6));
+      border:1px solid #223; border-radius:10px; padding:10px 12px; backdrop-filter: blur(4px);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04), 0 8px 20px rgba(0,0,0,.35);
+    }
+    .stats{display:flex; gap:14px; align-items:center; font-size:12px;}
+    .label{opacity:.8; margin-right:6px;}
+    .pill{
+      padding:6px 10px; border-radius:999px; background:#0d1426; border:1px solid #223; font-size:12px;
+    }
+    .bomb-pill{border-color:var(--danger); box-shadow:0 0 0 2px rgba(255,77,109,.15) inset;}
+
+    /* —— 버튼 —— */
+    .buttons{display:flex; gap:10px;}
+    button{
+      pointer-events:auto; cursor:pointer; user-select:none;
+      background:var(--btn); color:var(--ui-fg); border:1px solid #2d3756; border-radius:10px;
+      padding:10px 14px; font-family:inherit; font-size:12px; letter-spacing:.5px; text-transform:uppercase;
+      box-shadow:0 6px 16px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04);
+      transition: transform .06s ease, background .2s ease;
+    }
+    button:hover{ background:var(--btn-h); }
+    button:active{ transform: translateY(1px) scale(.99); }
+
+    /* —— 오버레이 (시작/승리/패배) —— */
+    .overlay{
+      position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center;
+      gap:18px; background: radial-gradient(60% 60% at 50% 40%, rgba(35,50,90,.25), rgba(0,0,0,.65));
+      text-align:center; backdrop-filter: blur(2px);
+    }
+    .title{font-size:20px; color:var(--ui-ac); text-shadow:0 2px 0 #000, 0 0 20px rgba(91,213,255,.25);}
+    .subtitle{font-size:12px; opacity:.9;}
+    .big{font-size:14px;}
+    .win{ color: var(--win); }
+    .lose{ color: var(--lose); }
+    .kbd{ background:#111a2b; border:1px solid #2d3756; padding:4px 6px; border-radius:6px; font-size:11px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <!-- 실제 게임 화면 -->
+    <canvas id="game" width="960" height="540" aria-label="게임 캔버스"></canvas>
+
+    <!-- HUD & 컨트롤 -->
+    <div class="hud">
+      <div class="row" style="justify-content:space-between;">
+        <div class="panel stats" id="statsPanel">
+          <span class="label">점수</span><span class="pill" id="score">0</span>
+          <span class="label">목표</span><span class="pill" id="target">100</span>
+          <span class="label">시간</span><span class="pill" id="time">60.0</span>
+          <span class="label">폭탄</span><span class="pill bomb-pill" id="bombs">3</span>
+        </div>
+        <div class="buttons panel">
+          <button id="startBtn">시작</button>
+          <button id="restartBtn">재시작</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 시작/결과 오버레이 -->
+    <div class="overlay" id="overlay">
+      <div class="title">외계를 위해 희생하라</div>
+      <div class="subtitle">장르: 슈팅 · 픽셀 아트 · 은하수 배경</div>
+      <div class="panel" style="max-width:640px;">
+        <div class="big" style="margin-bottom:10px;">조작 방법</div>
+        <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+          <span class="kbd">← ↑ ↓ →</span> <span>이동</span>
+          <span class="kbd">Space</span> <span>총 쏘기</span>
+          <span class="kbd">A</span> <span>폭탄</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="overlayStart">시작 버튼 클릭</button>
+      </div>
+      <div style="font-size:11px; opacity:.8;">지구인을 맞출 때마다 +5점 · 목표 점수 도달 시 승리 · 시간이 끝나면 패배</div>
+    </div>
+  </div>
+
+  <script>
+  // ============================================================
+  //  외계를 위해 희생하라 — HTML5 Canvas 슈팅 게임
+  //  요구 사항 반영 목록:
+  //   • 조작: 방향키(이동), Space(총), A(폭탄)
+  //   • 시작 버튼으로 시작, 재시작 버튼 제공
+  //   • 목표: 지구인 맞추기 / 승리: 일정 점수(기본 100) 도달
+  //   • 게임오버: 제한 시간 종료
+  //   • 점수: 지구인 1명 당 5점
+  //   • 난이도: 시간이 지날수록 ‘움직임이 느려짐’ (플레이어·적 모두 속도 소폭 하향)
+  //   • 디자인: 픽셀 아트 감성, 은하수(스타필드) 배경, 폭발 이펙트
+  //   • 효과음: 간단한 Web Audio 비프/펑 사운드
+  // ============================================================
+
+  // —— 캔버스/컨텍스트 ——
+  const cvs = document.getElementById('game');
+  const ctx = cvs.getContext('2d');
+  ctx.imageSmoothingEnabled = false; // 픽셀 느낌 유지
+
+  // —— HUD 엘리먼트 ——
+  const elScore = document.getElementById('score');
+  const elTarget = document.getElementById('target');
+  const elTime = document.getElementById('time');
+  const elBombs = document.getElementById('bombs');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const overlay = document.getElementById('overlay');
+  const overlayStart = document.getElementById('overlayStart');
+
+  // —— 오디오: 간단 효과음 생성기 ——
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  const actx = new AudioCtx();
+  const playBeep = (freq=440, dur=0.06, type='square', gain=0.05)=>{
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.type = type; o.frequency.value = freq; g.gain.value = gain; o.connect(g); g.connect(actx.destination);
+    o.start(); o.stop(actx.currentTime + dur);
+  };
+  const sShoot = ()=> playBeep(840, .05, 'square', 0.04);
+  const sExpl  = ()=> playBeep(110, .18, 'sawtooth', 0.06);
+  const sWin   = ()=> playBeep(660, .1, 'square', 0.06);
+  const sLose  = ()=> playBeep(220, .2, 'triangle', 0.05);
+  const sPickup= ()=> playBeep(1200, .06, 'square', 0.04);
+
+  // —— 게임 상태 ——
+  const state = {
+    running: false,
+    score: 0,
+    targetScore: 1000,    // 승리 목표 점수
+    timeLimit: 200,       // 제한 시간(초)
+    timeLeft: 60,
+    bombs: 3,            // 보유 폭탄 수
+    lastTime: 0,
+    keys: {},
+  };
+  elTarget.textContent = state.targetScore;
+
+  // —— 난이도(시간 경과에 따른 감속) ——
+  function difficultySlowdown(){
+    // 0초→1.0, 60초→0.8 (선형), 너무 답답하지 않게 살짝만 느려짐
+    const t = Math.max(0, Math.min(1, 1 - state.timeLeft / state.timeLimit));
+    return 1 - 0.2 * t; // 1.0 → 0.8
+  }
+
+  // —— 엔티티 컨테이너 ——
+  const player = { x: cvs.width/2, y: cvs.height - 80, w: 16, h: 16, speed: 240 };
+  let bullets = [];
+  let enemies = [];
+  let particles = [];
+  let pickups = []; // 폭탄 아이템
+
+  // —— 유틸 ——
+  const rand = (a,b)=> a + Math.random()*(b-a);
+  const clamp = (v,a,b)=> Math.max(a, Math.min(b, v));
+
+  // —— 입력 ——
+  addEventListener('keydown', (e)=>{ state.keys[e.key.toLowerCase()] = true; if(actx.state==='suspended') actx.resume(); });
+  addEventListener('keyup',   (e)=>{ state.keys[e.key.toLowerCase()] = false; });
+
+  // —— 버튼 ——
+  function startGame(){
+    resetGame();
+    overlay.style.display='none';
+    state.running = true;
+    state.lastTime = performance.now();
+    requestAnimationFrame(loop);
+  }
+  function resetGame(){
+    state.score = 0; elScore.textContent = state.score;
+    state.timeLeft = state.timeLimit; elTime.textContent = state.timeLeft.toFixed(1);
+    state.bombs = 3; elBombs.textContent = state.bombs;
+    player.x = cvs.width/2; player.y = cvs.height - 80;
+    bullets.length = 0; enemies.length = 0; particles.length = 0; pickups.length = 0;
+    spawnInitial();
+  }
+  startBtn.onclick = startGame; overlayStart.onclick = startGame;
+  restartBtn.onclick = ()=>{ startGame(); };
+
+  // —— 스폰 로직 ——
+  let enemySpawnTimer = 0;
+  function spawnEnemy(){
+    // 적(지구인): 상단에서 아래로, 혹은 좌우에서 사선으로 등장
+    const edge = Math.random();
+    let x,y,vx,vy;
+    if(edge < 0.6){ // 상단
+      x = rand(20, cvs.width-20); y = -20; vx = rand(-20,20); vy = rand(40,80);
+    } else if(edge < 0.8){ // 좌측
+      x = -20; y = rand(40, cvs.height*0.6); vx = rand(60,110); vy = rand(10,40);
+    } else { // 우측
+      x = cvs.width+20; y = rand(40, cvs.height*0.6); vx = rand(-110,-60); vy = rand(10,40);
+    }
+    enemies.push({x,y,vx,vy,w:14,h:14,hp:1, t:0});
+  }
+  function spawnInitial(){
+    for(let i=0;i<10;i++) spawnEnemy();
+  }
+  function maybeSpawnPickup(dt){
+    // 확률적으로 폭탄 아이템 드롭(상단에서 하강)
+    if(Math.random() < 0.005 * dt){
+      pickups.push({x:rand(20,cvs.width-20), y:-10, vy:50, w:12, h:12});
+    }
+  }
+
+  // —— 총알/폭탄 ——
+  let shootCooldown = 0;
+  function tryShoot(){
+    if(shootCooldown>0) return;
+    bullets.push({x:player.x, y:player.y-12, vx:0, vy:-360, w:3, h:6});
+    sShoot();
+    shootCooldown = 0.18; // 연사 제한
+  }
+  function useBomb(){
+    if(state.bombs<=0) return;
+    state.bombs--; elBombs.textContent = state.bombs;
+    // 화면 전체 폭발: 적 모두 처치 + 파편 생성
+    enemies.forEach(e=>{
+      makeExplosion(e.x, e.y, 18);
+      state.score += 5; // 적 1명 = 5점
+    });
+    enemies.length = 0;
+    sExpl(); sExpl();
+  }
+
+  // —— 폭발 파티클 ——
+  function makeExplosion(x,y, n=12){
+    for(let i=0;i<n;i++){
+      const a = Math.random()*Math.PI*2;
+      const sp = rand(60,160);
+      particles.push({x,y, vx:Math.cos(a)*sp, vy:Math.sin(a)*sp, life:rand(.3,.8)});
+    }
+  }
+
+  // —— 충돌 ——
+  function hit(a,b){
+    return Math.abs(a.x-b.x) < (a.w+b.w)/2 && Math.abs(a.y-b.y) < (a.h+b.h)/2;
+  }
+
+  // —— 배경(은하수/스타필드) ——
+  const stars = Array.from({length:140},()=>({x:Math.random()*cvs.width, y:Math.random()*cvs.height, z: rand(0.2,1)}));
+  function drawBackground(dt){
+    // 별 이동 (느린 패럴랙스)
+    for(const s of stars){ s.y += 8 * s.z * dt; if(s.y>cvs.height) { s.y = -2; s.x = Math.random()*cvs.width; } }
+    ctx.fillStyle = '#000'; ctx.fillRect(0,0,cvs.width,cvs.height);
+    for(const s of stars){
+      const size = Math.ceil(s.z*2);
+      ctx.fillStyle = `rgba(${Math.floor(120+80*s.z)},${Math.floor(160+70*s.z)},255,${0.7*s.z})`;
+      ctx.fillRect(Math.round(s.x), Math.round(s.y), size, size);
+    }
+    // 은하수 흐름
+    ctx.globalAlpha = 0.08; ctx.fillStyle = '#17294f';
+    for(let i=0;i<6;i++) ctx.fillRect(0, (i*90 + (performance.now()/1200)%90)-90, cvs.width, 50);
+    ctx.globalAlpha = 1;
+  }
+
+  // —— 그리기(픽셀 블록으로 간단 도트) ——
+  function drawPlayer(){
+    const {x,y} = player; ctx.save(); ctx.translate(Math.round(x), Math.round(y));
+    // 외계인(주인공) — 도트 블록
+    ctx.fillStyle = '#8ef9a5'; // 몸체
+    ctx.fillRect(-8,-8,16,16);
+    ctx.fillStyle = '#16261f'; // 눈
+    ctx.fillRect(-4,-2,3,3); ctx.fillRect(1,-2,3,3);
+    ctx.fillStyle = '#3affd2'; // 장식
+    ctx.fillRect(-2,4,4,2);
+    ctx.restore();
+  }
+  function drawEnemy(e){
+    ctx.save(); ctx.translate(Math.round(e.x), Math.round(e.y));
+    // 지구인 — 파란 헬멧 + 노랑 복장
+    ctx.fillStyle = '#3aa0ff'; ctx.fillRect(-7,-9,14,7); // 헬멧
+    ctx.fillStyle = '#ffd166'; ctx.fillRect(-6,-2,12,12); // 몸통
+    ctx.fillStyle = '#0d1b2a'; ctx.fillRect(-3,0,2,3); ctx.fillRect(1,0,2,3); // 다리
+    ctx.restore();
+  }
+  function drawBullet(b){ ctx.fillStyle='#afffff'; ctx.fillRect(Math.round(b.x-1), Math.round(b.y-3), 3, 6); }
+  function drawPickup(p){ ctx.fillStyle= '#ff4d6d'; ctx.fillRect(Math.round(p.x-6), Math.round(p.y-6), 12, 12); ctx.fillStyle='#fff'; ctx.fillRect(Math.round(p.x-2), Math.round(p.y-2), 4, 4); }
+  function drawParticles(dt){
+    for(const prt of particles){
+      ctx.fillStyle = '#ff7b9a';
+      ctx.fillRect(Math.round(prt.x-1), Math.round(prt.y-1), 2, 2);
+    }
+  }
+
+  // —— 업데이트 ——
+  function update(dt){
+    // 이동 속도 감속 계수
+    const slow = difficultySlowdown();
+
+    // 플레이어 이동
+    const sp = player.speed * slow;
+    let vx=0, vy=0;
+    if(state.keys['arrowleft']||state.keys['a']) vx -= 1; // WASD 중 A는 폭탄과 겹치니 화살표 권장. 그래도 이동으로도 허용.
+    if(state.keys['arrowright']||state.keys['d']) vx += 1;
+    if(state.keys['arrowup']||state.keys['w']) vy -= 1;
+    if(state.keys['arrowdown']||state.keys['s']) vy += 1;
+    const len = Math.hypot(vx,vy)||1;
+    player.x = clamp(player.x + (vx/len)*sp*dt, 12, cvs.width-12);
+    player.y = clamp(player.y + (vy/len)*sp*dt, 12, cvs.height-12);
+
+    // 총알 발사
+    if(state.keys[' ']||state.keys['space']) tryShoot();
+
+    // 폭탄 사용 (키: a)
+    if(state.keys['a'] && !state.keys.__bombLatch){ useBomb(); state.keys.__bombLatch=true; }
+    if(!state.keys['a']) state.keys.__bombLatch=false;
+
+    // 쿨다운
+    shootCooldown = Math.max(0, shootCooldown - dt);
+
+    // 총알 이동
+    bullets.forEach(b=>{ b.x += b.vx*dt; b.y += b.vy*dt; });
+    bullets = bullets.filter(b=> b.y>-20 && b.y<cvs.height+20 && b.x>-20 && b.x<cvs.width+20);
+
+    // 적 스폰 & 이동
+    enemySpawnTimer -= dt;
+    if(enemySpawnTimer<=0){ enemySpawnTimer = rand(0.4, 0.9); spawnEnemy(); }
+    for(const e of enemies){ e.t += dt; e.x += e.vx*slow*dt; e.y += e.vy*slow*dt; }
+    enemies = enemies.filter(e=> e.x>-40 && e.x<cvs.width+40 && e.y<cvs.height+30);
+
+    // 픽업(폭탄) 스폰/이동
+    maybeSpawnPickup(dt);
+    for(const p of pickups){ p.y += p.vy*dt; }
+    pickups = pickups.filter(p=> p.y < cvs.height+20);
+
+    // 충돌: 총알 ↔ 적
+    for(const b of bullets){
+      for(const e of enemies){
+        if(hit(b,e)){
+          e.hp = 0; b.dead = true; state.score += 5; elScore.textContent = state.score; makeExplosion(e.x,e.y,12); sExpl();
+        }
+      }
+    }
+    bullets = bullets.filter(b=> !b.dead);
+    enemies = enemies.filter(e=> e.hp>0);
+
+    // 충돌: 플레이어 ↔ 픽업
+    for(const p of pickups){
+      if(hit(p, player)){
+        state.bombs = Math.min(9, state.bombs+1); elBombs.textContent = state.bombs; p.dead = true; sPickup();
+      }
+    }
+    pickups = pickups.filter(p=> !p.dead);
+
+    // 파티클 업데이트
+    for(const prt of particles){ prt.x += prt.vx*dt; prt.y += prt.vy*dt; prt.life -= dt; }
+    particles = particles.filter(p=> p.life>0);
+
+    // 시간 경과
+    state.timeLeft = Math.max(0, state.timeLeft - dt);
+    elTime.textContent = state.timeLeft.toFixed(1);
+
+    // 승리/패배 체크
+    if(state.score >= state.targetScore){
+      endGame(true);
+    } else if(state.timeLeft <= 0){
+      endGame(false);
+    }
+  }
+
+  // —— 렌더 ——
+  function render(dt){
+    drawBackground(dt);
+    // 엔티티
+    drawPlayer();
+    for(const b of bullets) drawBullet(b);
+    for(const e of enemies) drawEnemy(e);
+    for(const p of pickups) drawPickup(p);
+    drawParticles(dt);
+
+    // 바닥 라인(살짝 레트로 느낌 디테일)
+    ctx.globalAlpha = .2; ctx.fillStyle = '#274472'; ctx.fillRect(0, cvs.height-2, cvs.width, 2); ctx.globalAlpha = 1;
+  }
+
+  // —— 게임 루프 ——
+  function loop(now){
+    if(!state.running) return;
+    const dt = Math.min(0.033, (now - state.lastTime)/1000 || 0.016);
+    state.lastTime = now;
+    update(dt); render(dt);
+    requestAnimationFrame(loop);
+  }
+
+  // —— 종료 처리 ——
+  function endGame(win){
+    state.running = false;
+    overlay.style.display='flex';
+    overlay.innerHTML = '';
+
+    const title = document.createElement('div');
+    title.className = 'title '+(win?'win':'lose');
+    title.textContent = win ? '승리! 목표 점수 달성' : '시간 종료 — 패배!';
+
+    const sub = document.createElement('div');
+    sub.className = 'subtitle';
+    sub.innerHTML = `점수: <span style="color:var(--ui-ac)">${state.score}</span> / 목표: ${state.targetScore}`;
+
+    const tip = document.createElement('div'); tip.style.fontSize='11px'; tip.style.opacity='.85';
+    tip.innerHTML = win ? '멋져요! 지구인은 모두 떨고 있어요 👽' : '다음엔 더 빨리 움직여보자… 아니, 느려지니 더 영리하게!';
+
+    const buttons = document.createElement('div'); buttons.className='buttons';
+    const again = document.createElement('button'); again.textContent = '재시작';
+    again.onclick = startGame;
+    const quit = document.createElement('button'); quit.textContent = '처음 화면';
+    quit.onclick = ()=>{ resetGame(); showStartOverlay(); };
+    buttons.append(again, quit);
+
+    const panel = document.createElement('div'); panel.className='panel'; panel.style.maxWidth='640px';
+    const help = document.createElement('div'); help.innerHTML = '<span class="kbd">Space</span> 총알 · <span class="kbd">A</span> 폭탄 · 지구인 명중 시 +5점';
+    panel.append(help);
+
+    overlay.append(title, sub, buttons, panel);
+
+    if(win) sWin(); else sLose();
+  }
+
+  function showStartOverlay(){
+    overlay.style.display='flex';
+    overlay.innerHTML = `
+      <div class="title">외계를 위해 희생하라</div>
+      <div class="subtitle">장르: 슈팅 · 픽셀 아트 · 은하수 배경</div>
+      <div class="panel" style="max-width:640px;">
+        <div class="big" style="margin-bottom:10px;">조작 방법</div>
+        <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+          <span class="kbd">← ↑ ↓ →</span> <span>이동</span>
+          <span class="kbd">Space</span> <span>총 쏘기</span>
+          <span class="kbd">A</span> <span>폭탄</span>
+        </div>
+      </div>
+      <div class="buttons">
+        <button id="overlayStart">시작 버튼 클릭</button>
+      </div>
+      <div style="font-size:11px; opacity:.8;">지구인을 맞출 때마다 +5점 · 목표 점수 도달 시 승리 · 시간이 끝나면 패배</div>
+    `;
+    overlay.querySelector('#overlayStart').onclick = startGame;
+  }
+
+  // 진입 시 첫 화면
+  showStartOverlay();
+
+  // 처음에 가볍게 렌더(정지 화면)
+  (function initialDraw(){ drawBackground(0); drawPlayer(); })();
+
+  </script>
+</body>
+</html>

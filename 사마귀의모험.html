@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>사마귀의 모험 - 레벨업/노크백/외형변화</title>
+  <style>
+    html, body { height: 100%; margin: 0; }
+    body { background:#111; color:#eee; font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Arial, sans-serif; display:flex; align-items:center; justify-content:center; }
+
+    .wrap { width: min(960px, 100vw); aspect-ratio: 16/9; background:#1a1a1a; border:2px solid #333; border-radius:14px; box-shadow: 0 20px 50px rgba(0,0,0,.6), inset 0 0 0 4px #000; position:relative; overflow:hidden; }
+
+    .hud { position:absolute; inset:12px 12px auto 12px; display:flex; gap:12px; align-items:center; z-index:3; font-weight:700; letter-spacing:0.2px; }
+    .chip { background:#222; border:1px solid #333; padding:6px 10px; border-radius:10px; box-shadow: inset 0 1px 0 #000; }
+    .gold { color:#ffd54a; }
+    .green { color:#5bd17c; }
+    .red { color:#ff6b6b; }
+    .sky { color:#6bd1ff; }
+
+    canvas { width:100%; height:100%; image-rendering: pixelated; display:block; }
+
+    .help { position:absolute; inset:auto 10px 10px 10px; text-align:center; color:#9aa; font-size:12px; z-index:3; }
+
+    /* 공통 오버레이 */
+    .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:linear-gradient(180deg, rgba(0,0,0,0.55), rgba(0,0,0,0.85)); color:#f0f6ff; z-index:5; text-align:center; padding:24px; }
+    .overlay h1 { margin:0; font-size:clamp(28px, 6vw, 48px); text-shadow:0 2px 0 #000; }
+    .overlay p { margin:0; opacity:0.9; line-height:1.6; }
+    .count { font-size:clamp(48px, 10vw, 120px); font-weight:900; color:#7ee081; text-shadow:0 4px 0 #0b3d18, 0 0 20px rgba(126,224,129,0.4); }
+
+    /* 승리/패배 배너 */
+    .banner { position:absolute; inset:0; display:none; align-items:center; justify-content:center; z-index:6; }
+    .banner .card { background:rgba(10,10,10,.9); border:1px solid #333; padding:26px 22px; border-radius:16px; text-align:center; box-shadow:0 10px 30px rgba(0,0,0,.6); }
+    .banner h2 { margin:6px 0 10px; font-size:28px; }
+    .banner p { margin:3px 0; color:#aab; }
+    .banner button { margin-top:14px; background:#2a2a2a; border:1px solid #3a3a3a; color:#eee; font-weight:700; border-radius:10px; padding:10px 14px; cursor:pointer; }
+    .banner button:hover { filter:brightness(1.1); }
+
+    /* 레벨업 축하 오버레이 */
+    #levelUp { display:none; }
+    #levelUp .cele { font-size: clamp(28px, 5vw, 56px); color:#ffe082; text-shadow:0 0 12px rgba(255,208,64,.25); font-weight:900; }
+    #levelUp .rewards { font-size: clamp(14px, 2.2vw, 18px); color:#cfe9ff; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hud" id="hud">
+      <div class="chip">레벨 <span id="level" class="gold">1</span></div>
+      <div class="chip">점수 <span id="score" class="green">0</span> / 100</div>
+      <div class="chip">목숨 <span id="lives" class="red">30</span></div>
+      <div class="chip">체력 <span id="hp" class="sky">3</span>/3</div>
+      <div class="chip">아이템 <span id="items">—</span></div>
+    </div>
+
+    <canvas id="game" width="960" height="540" aria-label="사마귀의 모험 게임 화면"></canvas>
+
+    <div class="help">조작: ← → 이동, ↑ 점프(레벨4부터 ↑ 유지 시 비행), SPACE 공격 · R 재시작 · P 일시정지</div>
+
+    <!-- 시작 카운트다운/스토리 오버레이 -->
+    <div class="overlay" id="overlay">
+      <h1>사마귀의 모험</h1>
+      <p id="story">아기 사마귀가 악당 곤충들을 물리치고 레벨업 3번을 거쳐 어른 사마귀가 됩니다!</p>
+      <div class="count" id="count">10</div>
+      <p>곧 시작합니다…</p>
+    </div>
+
+    <!-- 레벨업 축하 오버레이 -->
+    <div class="overlay" id="levelUp" role="dialog" aria-live="polite">
+      <div class="cele">LEVEL UP!</div>
+      <div id="levelUpText" class="rewards">레벨 2 달성! 보상: 갑옷</div>
+    </div>
+
+    <!-- 승리/패배 배너 -->
+    <div class="banner" id="winBanner" role="dialog" aria-live="polite">
+      <div class="card">
+        <h2>승리! 🎉</h2>
+        <p>보스 돼지여치를 물리쳤습니다.</p>
+        <p>사마귀는 알을 낳고, 조용히 숲을 떠납니다… 🥚✨</p>
+        <button id="restartWin">다시 시작</button>
+      </div>
+    </div>
+
+    <div class="banner" id="loseBanner" role="dialog" aria-live="polite">
+      <div class="card">
+        <h2>게임 오버 💀</h2>
+        <p>다음엔 더 강해져서 돌아오세요!</p>
+        <button id="restartLose">다시 시작</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===== 기본 셋업 =====
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const clamp = (v,min,max)=> Math.max(min, Math.min(max, v));
+    const rnd = (a,b)=> Math.random()*(b-a)+a;
+
+    const GROUND_Y = 460;
+    const GRAVITY = 0.7;
+    const FRICTION = 0.8;
+    const WORLD_LEFT = 0;
+    const WORLD_RIGHT = canvas.width;
+
+    const LEVEL_ENEMY_NAME = { 1:'아기사마귀', 2:'귀뚜라미', 3:'방귀장수노린재', 4:'벼메뚜기', 5:'보스 돼지여치' };
+
+    // HUD
+    const hud = {
+      level: document.getElementById('level'),
+      score: document.getElementById('score'),
+      lives: document.getElementById('lives'),
+      hp: document.getElementById('hp'),
+      items: document.getElementById('items')
+    };
+
+    // 오버레이/배너
+    const overlay = document.getElementById('overlay');
+    const levelUpOverlay = document.getElementById('levelUp');
+    const levelUpText = document.getElementById('levelUpText');
+    const countEl = document.getElementById('count');
+    const storyEl = document.getElementById('story');
+    const winBanner = document.getElementById('winBanner');
+    const loseBanner = document.getElementById('loseBanner');
+    const restartWin = document.getElementById('restartWin');
+    const restartLose = document.getElementById('restartLose');
+
+    // 입력
+    const keys = new Set();
+    window.addEventListener('keydown', (e)=>{ if(['ArrowLeft','ArrowRight','ArrowUp','Space',' '].includes(e.code||e.key)) e.preventDefault(); keys.add(e.code||e.key); });
+    window.addEventListener('keyup', (e)=>{ keys.delete(e.code||e.key); });
+
+    // ===== 플레이어 =====
+    class Player{
+      constructor(){ this.reset(); }
+      reset(){
+        this.x=120; this.y=GROUND_Y; this.w=30; this.h=38;
+        this.vx=0; this.vy=0; this.dir=1; this.onGround=true;
+        this.hp=3; this.lives=30; this.score=0; this.level=1; this.cool=0; this.items=[];
+        this.hasArmor=false; this.longArms=false; this.hasWings=false; this.isGold=false; this.attackFrames=0; this.swingAngle=0;
+      }
+      addScore(n){
+        this.score += n;
+        // 100점마다 레벨업 체크
+        while(this.score >= this.level*100 && this.level < 5){
+          this.level++;
+          // 보상 지급은 즉시, 게임은 3초간 레벨업 연출 상태로 일시정지
+          const rewardText = giveLevelReward(this.level);
+          triggerLevelUp(this.level, rewardText);
+        }
+        updateHUD(this);
+      }
+      damage(amount){
+        const dmg = this.hasArmor ? Math.max(1, amount-1) : amount;
+        this.hp -= dmg;
+        if(this.hp <= 0){
+          this.lives -= 1; this.hp = 3;
+          if(this.lives < 0){ game.state='lose'; showLose(); }
+        }
+        updateHUD(this);
+      }
+      getAttackHitbox(){
+        // 공격 범위 3배 (강철 앞다리 적용 후 배수)
+        const baseReach = this.longArms ? 42 : 26;
+        const reach = baseReach * 3;
+        const ax = this.dir===1 ? this.x + this.w : this.x - reach;
+        return { x: ax, y: this.y - 12, w: reach, h: this.h + 14 };
+      }
+      step(){
+        const left = keys.has('ArrowLeft');
+        const right= keys.has('ArrowRight');
+        const up   = keys.has('ArrowUp');
+        const attack = keys.has('Space') || keys.has(' ');
+
+        if(game.state!=='play'){ return; } // 레벨업/카운트다운/정지 시 입력 무효
+
+        const accel = 0.9;
+        if(left){ this.vx-=accel; this.dir=-1; }
+        if(right){ this.vx+=accel; this.dir= 1; }
+        if(up && this.onGround && !this.hasWings){ this.vy=-12.4; this.onGround=false; }
+        if(this.hasWings && up){ this.vy = Math.min(this.vy, -3.2); }
+
+        if(attack && this.cool<=0){
+          this.cool = 16; this.attackFrames = 10; this.swingAngle = 0;
+          performAttack(this);
+        }
+
+        // 물리
+        this.vy += GRAVITY;
+        if(this.onGround) this.vx *= FRICTION;
+        this.x += this.vx; this.y += this.vy;
+        if(this.y>=GROUND_Y){ this.y=GROUND_Y; this.vy=0; this.onGround=true; }
+        if(this.x<WORLD_LEFT){ this.x=WORLD_LEFT; this.vx=0; }
+        if(this.x+this.w>WORLD_RIGHT){ this.x=WORLD_RIGHT-this.w; this.vx=0; }
+
+        if(this.cool>0) this.cool--;
+        if(this.attackFrames>0){ this.attackFrames--; this.swingAngle += 14; }
+      }
+      draw(){
+        const body = this.isGold ? '#ffd54a' : '#8df28a';
+        const edge = this.isGold ? '#b08900' : '#2a6b2d';
+        const wing = '#b2f0ff';
+
+        // 그림자
+        ctx.fillStyle='rgba(0,0,0,0.25)'; ctx.fillRect(this.x+2, this.y+this.h-4, this.w, 6);
+
+        // 몸통
+        ctx.fillStyle=body; ctx.strokeStyle=edge; ctx.lineWidth=2;
+        ctx.fillRect(this.x, this.y-this.h, this.w, this.h); ctx.strokeRect(this.x, this.y-this.h, this.w, this.h);
+        // 머리
+        const headW=26, headH=18, hx=this.x+(this.dir===1?6:-2), hy=this.y-this.h-headH+6;
+        ctx.fillRect(hx,hy,headW,headH); ctx.strokeRect(hx,hy,headW,headH);
+        ctx.fillStyle='#111'; const eyeX=this.dir===1? hx+headW-8 : hx+4; ctx.fillRect(eyeX, hy+6, 5,5);
+
+        // 일반 팔
+        ctx.strokeStyle=edge; ctx.beginPath();
+        const armLen = this.longArms?22:16; const ax = this.dir===1? this.x+this.w-4 : this.x+4;
+        ctx.moveTo(ax, this.y - this.h/2); ctx.lineTo(ax + this.dir*armLen, this.y - this.h/2 - 6); ctx.stroke();
+
+        // 날개
+        if(this.hasWings){ ctx.fillStyle=wing; ctx.globalAlpha=0.8; const wx=this.x+(this.dir===1?-6:6); ctx.fillRect(wx, this.y-this.h-8, 18, 12); ctx.globalAlpha=1; }
+
+        // 공격 모션: 날카로운 팔 휘두르기
+        if(this.attackFrames>0){
+          const swingDir = this.dir; const baseX = this.dir===1 ? this.x+this.w : this.x; const baseY = this.y - this.h/2 - 6;
+          ctx.save(); ctx.translate(baseX, baseY); ctx.rotate((Math.PI/180) * this.swingAngle * swingDir); ctx.translate(-baseX, -baseY);
+          const tipX = baseX + swingDir*34;
+          ctx.beginPath(); ctx.moveTo(baseX, baseY); ctx.lineTo(tipX, baseY-10); ctx.lineTo(tipX, baseY+10); ctx.closePath();
+          ctx.fillStyle = this.isGold? '#ffe082' : '#caffad'; ctx.strokeStyle = this.isGold? '#b08900' : '#5fbf62'; ctx.lineWidth = 2; ctx.fill(); ctx.stroke();
+          ctx.restore();
+          // 히트박스 가이드(얇은 파선)
+          const hb = this.getAttackHitbox(); ctx.strokeStyle = this.isGold? '#ffe082' : '#7ee081'; ctx.setLineDash([6,4]); ctx.strokeRect(hb.x, hb.y, hb.w, hb.h); ctx.setLineDash([]);
+        }
+      }
+    }
+
+    // ===== 적 =====
+    class Enemy{
+      constructor(level,type){
+        this.level=level; this.type=type; this.dir=-1;
+        // 외형/능력
+        if(type==='boss'){ this.w=160; this.h=120; this.hp=10; this.speed=1.2; this.score=0; this.name=LEVEL_ENEMY_NAME[5]; }
+        else if(type==='super'){ this.w=70; this.h=56; this.hp=5; this.speed=1.8; this.score=20; this.name=`슈퍼 ${LEVEL_ENEMY_NAME[level]}`; }
+        else { this.w=34 + (level-1)*2; this.h=26 + (level-1)*2; this.hp=1; this.speed=2.0 + level*0.35; this.score=5; this.name=LEVEL_ENEMY_NAME[level]; }
+        this.x=canvas.width + rnd(0, 120); this.y=GROUND_Y;
+        this.hitFlash=0; this.dead=false; this.kb=0; // 노크백 프레임
+      }
+      step(){
+        if(game.state!=='play'){ return; }
+        // 노크백 상태면 오른쪽(뒤)으로 밀려남
+        if(this.kb>0){ this.x += 4; this.kb--; }
+        else { this.x -= this.speed; }
+        if(this.x + this.w < 0) this.dead = true;
+      }
+      draw(){
+        // 레벨별 외형 변주: 색, 무늬, 더듬이/등무늬
+        const levelColor = {
+          1: ['#9be7ff','#123e4a'],
+          2: ['#ffd0a0','#5a3b10'],
+          3: ['#ffb3c1','#5a1e2a'],
+          4: ['#c9ff8f','#2d5a1e'],
+          5: ['#ff9e80','#5a1e10']
+        };
+        const [base, edge] = (this.type==='super') ? ['#ffd54a','#6b5200'] : (this.type==='boss' ? ['#ff9e80','#5a1e10'] : levelColor[this.level]);
+        const fill = (this.hitFlash>0)? '#ffffff' : base; if(this.hitFlash>0) this.hitFlash--;
+
+        // 몸통
+        ctx.fillStyle=fill; ctx.strokeStyle=edge; ctx.lineWidth=2;
+        ctx.fillRect(this.x, this.y-this.h, this.w, this.h); ctx.strokeRect(this.x, this.y-this.h, this.w, this.h);
+
+        // 레벨에 따른 장식: 줄무늬/점, 더듬이
+        ctx.fillStyle=edge;
+        if(this.level>=2 && this.type!=='boss'){
+          // 줄무늬
+          for(let i=6;i<this.w-6;i+=12){ ctx.fillRect(this.x+i, this.y-this.h+6, 6, 4); }
+        }
+        if(this.level>=3 && this.type!=='boss'){
+          // 등점무늬
+          for(let i=8;i<this.w-8;i+=16){ ctx.fillRect(this.x+i, this.y-this.h+this.h/2, 4,4); }
+        }
+        if(this.level>=4 || this.type==='super'){
+          // 더듬이
+          ctx.strokeStyle=edge; ctx.beginPath(); ctx.moveTo(this.x+6, this.y-this.h); ctx.lineTo(this.x-4, this.y-this.h-10); ctx.moveTo(this.x+this.w-6, this.y-this.h); ctx.lineTo(this.x+this.w+4, this.y-this.h-12); ctx.stroke();
+        }
+
+        // 눈/입
+        ctx.fillStyle='#111'; ctx.fillRect(this.x+6, this.y - this.h + 8, 6, 6); ctx.fillRect(this.x+this.w-12, this.y - this.h + 8, 6, 6); ctx.fillRect(this.x+this.w/2-6, this.y-16, 12, 4);
+
+        // 이름 라벨
+        ctx.fillStyle='rgba(255,255,255,0.85)'; ctx.font='12px monospace'; ctx.fillText(this.name, this.x, this.y - this.h - 6);
+      }
+    }
+
+    // ===== 전투/스폰 =====
+    function performAttack(player){
+      const hb = player.getAttackHitbox();
+      enemies.forEach(e => {
+        if(e.dead) return;
+        if(rectHit(hb, {x:e.x, y:e.y - e.h, w:e.w, h:e.h})){
+          e.hp -= 1; e.hitFlash = 3; e.kb = 8; // ★ 피해 시 노크백 8프레임
+          if(e.hp <= 0){
+            e.dead = true;
+            if(e.type === 'boss'){ triggerWin(); } else { player.addScore(e.score); }
+          }
+        }
+      });
+    }
+
+    function rectHit(a,b){ return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y; }
+
+    // 게임 상태
+    const game = { state:'countdown', t:0, countdown:10, storyIndex:0, levelUpTimer:0 };
+
+    const player = new Player();
+    let enemies = [];
+    let spawnTimer = 0;
+
+    function resetGame(){
+      game.state='countdown'; game.countdown=10; game.storyIndex=0; game.t=0; game.levelUpTimer=0;
+      player.reset(); enemies=[];
+      overlay.style.display='flex'; levelUpOverlay.style.display='none'; winBanner.style.display='none'; loseBanner.style.display='none';
+      updateHUD(player);
+    }
+
+    function updateHUD(p){ hud.level.textContent=p.level; hud.score.textContent=p.score; hud.lives.textContent=p.lives; hud.hp.textContent=p.hp; hud.items.textContent=p.items.length? p.items.join(', '):'—'; }
+
+    // 레벨 보상 + 텍스트 반환
+    function giveLevelReward(level){
+      let text = '';
+      if(level===2){ player.hasArmor=true; player.items.push('갑옷'); text='레벨 2 달성! 보상: 갑옷 — 받는 피해 감소'; }
+      if(level===3){ player.longArms=true; player.items.push('강철 앞다리'); text='레벨 3 달성! 보상: 강철 앞다리 — 공격 사거리 증가'; }
+      if(level===4){ player.hasWings=true; player.items.push('날개'); text='레벨 4 달성! 보상: 날개 — ↑ 유지로 비행'; }
+      if(level===5){ player.isGold=true; player.items.push('금빛 변신'); text='레벨 5 돌입! 금빛으로 변신 — 보스 출현!'; spawnBoss(); }
+      updateHUD(player);
+      return text;
+    }
+
+    // ★ 레벨업 3초 연출
+    function triggerLevelUp(level, text){
+      levelUpText.textContent = text || `레벨 ${level} 달성!`;
+      levelUpOverlay.style.display = 'flex';
+      // 3초간 일시정지
+      game.state = 'levelup';
+      game.levelUpTimer = 180; // 60fps 기준 3초
+    }
+
+    function spawnBoss(){ enemies = enemies.filter(e=>e.type==='boss'); enemies.push(new Enemy(5,'boss')); }
+
+    function spawnEnemies(){
+      if(player.level>=5) return;
+      if(game.state!=='play') return; // 카운트다운/레벨업 중엔 스폰 중지
+      spawnTimer -= 1;
+      if(spawnTimer<=0){
+        const type = Math.random()<0.14 ? 'super' : 'normal';
+        enemies.push(new Enemy(player.level, type));
+        // 스폰 간격을 길게
+        const base = 110 - player.level*4;
+        spawnTimer = Math.max(36, base + Math.floor(rnd(-18, 18)));
+      }
+    }
+
+    // 스토리 라인
+    const storyLines=[
+      '아기 사마귀의 여정이 곧 시작됩니다…',
+      '다가오는 악당 곤충을 물리치세요!',
+      '일반 적은 1타, 슈퍼 적은 5타 필요!',
+      '100점을 모으면 레벨업 & 아이템 획득!',
+      '레벨4엔 날개로 비행 가능!',
+      '레벨5, 보스 돼지여치와의 최종 결전!'
+    ];
+
+    // 승패
+    function triggerWin(){ game.state='win'; winBanner.style.display='flex'; }
+    function showLose(){ loseBanner.style.display='flex'; }
+
+    restartWin.addEventListener('click', resetGame);
+    restartLose.addEventListener('click', resetGame);
+
+    // 단축키
+    window.addEventListener('keydown', (e)=>{
+      if(e.key==='p'||e.key==='P'){ if(game.state==='play') game.state='pause'; else if(game.state==='pause') game.state='play'; }
+      if(e.key==='r'||e.key==='R') resetGame();
+    });
+
+    // ===== 루프 =====
+    function loop(){
+      requestAnimationFrame(loop);
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+      drawBackground();
+
+      // 카운트다운
+      if(game.state==='countdown'){
+        game.t++;
+        if(game.t%60===0 && game.countdown>0){ game.countdown--; countEl.textContent=game.countdown; game.storyIndex=(game.storyIndex+1)%storyLines.length; storyEl.textContent=storyLines[game.storyIndex]; }
+        if(game.countdown<=0){ game.state='play'; overlay.style.display='none'; }
+        player.draw();
+        return;
+      }
+
+      // 레벨업 연출: 3초 정지
+      if(game.state==='levelup'){
+        drawWorld();
+        if(game.levelUpTimer>0){ game.levelUpTimer--; }
+        else { levelUpOverlay.style.display='none'; game.state='play'; }
+        return;
+      }
+
+      // 일시정지
+      if(game.state==='pause'){ drawWorld(); drawCenterText('일시정지', '#ffd54a'); return; }
+
+      // 승패 후
+      if(game.state==='win' || game.state==='lose'){ drawWorld(); return; }
+
+      // 실제 플레이
+      if(game.state==='play'){
+        player.step();
+        spawnEnemies();
+        enemies.forEach(e=> e.step());
+        enemies = enemies.filter(e=>!e.dead);
+
+        // 접촉 피해
+        enemies.forEach(e=>{
+          const a={x:player.x,y:player.y-player.h,w:player.w,h:player.h};
+          const b={x:e.x,y:e.y-e.h,w:e.w,h:e.h};
+          if(rectHit(a,b)){
+            player.damage(1);
+            player.vx += -player.dir*3; player.vy=-6; player.onGround=false;
+          }
+        });
+
+        drawWorld();
+        return;
+      }
+    }
+
+    // ===== 렌더링 =====
+    function drawBackground(){
+      for(let i=0;i<canvas.height;i+=8){ const t=i/canvas.height; const c=16+Math.floor(40*t); ctx.fillStyle=`rgb(${c}, ${c+8}, ${c+24})`; ctx.fillRect(0,i,canvas.width,8);} 
+      ctx.fillStyle='#0f1a1a';
+      for(let x=0;x<canvas.width;x+=80){ const h=80+Math.sin((x+game.t*0.02)*0.02)*20; ctx.fillRect(x,canvas.height-200,60,h); }
+      ctx.fillStyle='#1f2d1f'; ctx.fillRect(0,GROUND_Y+8,canvas.width,80); ctx.fillStyle='#233523'; for(let x=0;x<canvas.width;x+=16){ ctx.fillRect(x,GROUND_Y+8,12,4); }
+    }
+
+    function drawWorld(){
+      enemies.forEach(e=> e.draw());
+      player.draw();
+      ctx.strokeStyle='#2a3a2a'; ctx.beginPath(); ctx.moveTo(0,GROUND_Y+0.5); ctx.lineTo(canvas.width,GROUND_Y+0.5); ctx.stroke();
+    }
+
+    function drawCenterText(text,color){ ctx.fillStyle='rgba(0,0,0,0.6)'; ctx.fillRect(canvas.width/2-160,canvas.height/2-60,320,120); ctx.strokeStyle='#333'; ctx.strokeRect(canvas.width/2-160,canvas.height/2-60,320,120); ctx.fillStyle=color; ctx.font='28px monospace'; ctx.textAlign='center'; ctx.fillText(text, canvas.width/2, canvas.height/2+10); ctx.textAlign='start'; }
+
+    // 시작
+    resetGame();
+    loop();
+  </script>
+</body>
+</html>
