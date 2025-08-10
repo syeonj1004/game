@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<title>게임임 — X키 발사 버전</title>
+<style>
+  body { background: #000; margin: 0; overflow: hidden; }
+  canvas { display: block; margin: auto; background: #111; }
+</style>
+</head>
+<body>
+<canvas id="game" width="800" height="600"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+
+let keys = {};
+
+// 플레이어
+let player = { x: 400, y: 300, size: 20, speed: 5, color: 'white' };
+// 적 리스트
+let enemies = [];
+// 총알 리스트
+let bullets = [];
+// 적 총알
+let enemyBullets = [];
+
+let lastEnemySpawn = 0;
+let enemySpawnInterval = 2000; // 2초
+
+// 키 입력
+window.addEventListener('keydown', e => {
+  keys[e.key] = true;
+});
+window.addEventListener('keyup', e => {
+  keys[e.key] = false;
+});
+
+function spawnEnemy(){
+  const ex = Math.random() * canvas.width;
+  const ey = Math.random() * canvas.height;
+  enemies.push({ x: ex, y: ey, size: 20, speed: 1.2, color: 'red', cooldown: 0 });
+}
+
+function shootBullet(){
+  if(enemies.length === 0) return;
+  // 가장 가까운 적 찾기
+  let target = enemies[0];
+  let minDist = Infinity;
+  enemies.forEach(e => {
+    const dx = e.x - player.x;
+    const dy = e.y - player.y;
+    const dist = Math.hypot(dx, dy);
+    if(dist < minDist){
+      minDist = dist;
+      target = e;
+    }
+  });
+  const dx = target.x - player.x;
+  const dy = target.y - player.y;
+  const len = Math.hypot(dx, dy);
+  bullets.push({ x: player.x, y: player.y, dx: dx/len * 5, dy: dy/len * 5, size: 5, color: 'yellow' });
+}
+
+function shootEnemyBullet(enemy){
+  const dx = player.x - enemy.x;
+  const dy = player.y - enemy.y;
+  const len = Math.hypot(dx, dy);
+  enemyBullets.push({ x: enemy.x, y: enemy.y, dx: dx/len * 3, dy: dy/len * 3, size: 5, color: 'lime' });
+}
+
+function update(delta){
+  // 플레이어 이동
+  if(keys['ArrowUp']) player.y -= player.speed;
+  if(keys['ArrowDown']) player.y += player.speed;
+  if(keys['ArrowLeft']) player.x -= player.speed;
+  if(keys['ArrowRight']) player.x += player.speed;
+
+  // 발사(X키)
+  if(keys['x'] || keys['X']){
+    if(!shootCooldown){
+      shootBullet();
+      shootCooldown = 20; // 20프레임 쿨타임
+    }
+  }
+  if(shootCooldown > 0) shootCooldown--;
+
+  // 총알 이동
+  bullets.forEach(b => { b.x += b.dx; b.y += b.dy; });
+  enemyBullets.forEach(b => { b.x += b.dx; b.y += b.dy; });
+
+  // 적 이동 + 발사
+  enemies.forEach(e => {
+    const dx = player.x - e.x;
+    const dy = player.y - e.y;
+    const len = Math.hypot(dx, dy);
+    e.x += (dx/len) * e.speed;
+    e.y += (dy/len) * e.speed;
+    e.cooldown -= delta;
+    if(e.cooldown <= 0){
+      shootEnemyBullet(e);
+      e.cooldown = 1500; // 1.5초마다 발사
+    }
+  });
+
+  // 충돌 처리
+  bullets = bullets.filter(b => {
+    let hit = false;
+    enemies = enemies.filter(e => {
+      if(Math.hypot(b.x - e.x, b.y - e.y) < b.size + e.size/2){
+        hit = true;
+        return false;
+      }
+      return true;
+    });
+    return !hit;
+  });
+
+  // 적 총알이 플레이어에 맞았는지 체크
+  enemyBullets.forEach(b => {
+    if(Math.hypot(b.x - player.x, b.y - player.y) < b.size + player.size/2){
+      alert('게임 오버!');
+      document.location.reload();
+    }
+  });
+
+  // 적 총알 화면 밖 제거
+  enemyBullets = enemyBullets.filter(b => b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height);
+  bullets = bullets.filter(b => b.x >= 0 && b.x <= canvas.width && b.y >= 0 && b.y <= canvas.height);
+
+  // 적 스폰
+  lastEnemySpawn += delta;
+  if(lastEnemySpawn > enemySpawnInterval && enemies.length < 10){
+    spawnEnemy();
+    lastEnemySpawn = 0;
+  }
+}
+
+function draw(){
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // 플레이어
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x - player.size/2, player.y - player.size/2, player.size, player.size);
+
+  // 적
+  enemies.forEach(e => {
+    ctx.fillStyle = e.color;
+    ctx.fillRect(e.x - e.size/2, e.y - e.size/2, e.size, e.size);
+  });
+
+  // 총알
+  bullets.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // 적 총알
+  enemyBullets.forEach(b => {
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+let lastTime = 0;
+let shootCooldown = 0;
+function loop(timestamp){
+  const delta = timestamp - lastTime;
+  lastTime = timestamp;
+  update(delta);
+  draw();
+  requestAnimationFrame(loop);
+}
+
+spawnEnemy();
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
