@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Justin - Arcade</title>
+  <style>
+    :root{
+      --bg:#0d0f14; --panel:#151926; --accent:#55ccff; --text:#e8ecf1; --ok:#7dff7d;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0; background: radial-gradient(1000px 550px at 50% -200px, #1d2235 0%, var(--bg) 60%);
+      color:var(--text); font-family: system-ui, -apple-system, Segoe UI, Roboto, "Noto Sans KR", Arial, sans-serif;
+      display:flex; flex-direction:column; align-items:center; gap:12px}
+    .hud{width:min(920px,95vw); display:flex; align-items:center; justify-content:space-between; gap:8px;
+      padding:10px 12px; margin-top:14px; background:linear-gradient(180deg,#1e2437 0%, var(--panel) 100%);
+      border:1px solid #2d3552; border-radius:14px; box-shadow:0 8px 20px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.03)}
+    .stat{display:flex; align-items:center; gap:8px; font-weight:700}
+    .dot{width:10px; height:10px; border-radius:50%}
+    .dot.score{background:var(--ok)}
+    .dot.stage{background:var(--accent)}
+    .btn{appearance:none; border:none; cursor:pointer; font-weight:700; padding:10px 14px; border-radius:12px; letter-spacing:.2px;
+      background:linear-gradient(180deg,#2a334f 0%,#1e263d 100%); color:var(--text); border:1px solid #33406a;
+      box-shadow:0 4px 10px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.04); transition:transform .06s ease, filter .2s ease}
+    .btn:hover{filter:brightness(1.08)} .btn:active{transform:translateY(1px)}
+    .wrap{position:relative; width:min(920px,95vw); aspect-ratio:16/9; background:repeating-linear-gradient(135deg,#0f1422 0 14px,#0d1120 14px 28px);
+      border:1px solid #2b3456; border-radius:16px; overflow:hidden; box-shadow:0 18px 40px rgba(0,0,0,.5), inset 0 0 0 1px rgba(255,255,255,.03)}
+    canvas{display:block; width:100%; height:100%}
+    .overlay{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; flex-direction:column; gap:16px; text-align:center; padding:24px;
+      background:linear-gradient(180deg, rgba(9,12,20,.85), rgba(9,12,20,.65)); backdrop-filter: blur(2px)}
+    .title{font-size:clamp(28px,4vw,40px); font-weight:900; letter-spacing:.5px}
+    .subtitle{opacity:.85}
+    .pill{display:inline-flex; align-items:center; gap:8px; padding:8px 12px; border-radius:999px; background:rgba(85,204,255,.08); border:1px solid rgba(85,204,255,.35); font-weight:700}
+    .hint{position:absolute; left:12px; bottom:10px; opacity:.65; font-size:12px}
+    .toast{position:absolute; top:16px; left:50%; transform:translateX(-50%); background:rgba(0,0,0,.45); border:1px solid rgba(255,255,255,.08);
+      padding:6px 10px; border-radius:10px; font-weight:700; opacity:0; transition:opacity .25s ease}
+    .toast.show{opacity:1}
+  </style>
+</head>
+<body>
+  <div class="hud">
+    <div class="stat"><span class="dot score"></span> 점수: <span id="score">0</span></div>
+    <div class="stat"><span class="dot stage"></span> 스테이지: <span id="stage">1</span></div>
+    <div style="display:flex; gap:8px">
+      <button id="pauseBtn" class="btn" disabled>⏸️ 일시 정지 (P)</button>
+      <button id="restartBtn" class="btn" disabled>🔄 재시작</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <canvas id="game"></canvas>
+    <div id="overlay" class="overlay">
+      <div class="pill">ARCADE</div>
+      <div class="title">JUSTIN</div>
+      <div class="subtitle">마우스로 네모 캐릭터를 조종하고, <b>스페이스바</b> 또는 <b>좌클릭</b>으로 공격!</div>
+      <button id="startBtn" class="btn" style="font-size:18px; padding:12px 18px">▶ 시작하기</button>
+      <div class="hint">조작: 마우스 이동 / 좌클릭·스페이스 - 공격 • 닿으면 게임오버 • 몬스터 전멸 시 다음 스테이지</div>
+    </div>
+    <div id="toast" class="toast">Stage 1</div>
+  </div>
+
+  <script>
+    /** @type {HTMLCanvasElement} */
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const stageEl = document.getElementById('stage');
+    const overlay = document.getElementById('overlay');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const restartBtn = document.getElementById('restartBtn');
+    const toast = document.getElementById('toast');
+
+    function fitCanvas(){
+      const r = canvas.parentElement.getBoundingClientRect();
+      canvas.width = Math.floor(r.width * devicePixelRatio);
+      canvas.height = Math.floor(r.height * devicePixelRatio);
+      ctx.setTransform(devicePixelRatio,0,0,devicePixelRatio,0,0);
+    }
+    new ResizeObserver(fitCanvas).observe(canvas.parentElement); fitCanvas();
+
+    let running=false, paused=false, stage=1, score=0, lastTime=0;
+    const player = { x:200, y:200, size:22, speed:640, color:'#8ae66b' };
+    const input = { mouseX:0, mouseY:0, shooting:false };
+    let monsters=[], bullets=[];
+
+    const rand=(a,b)=>Math.random()*(b-a)+a; const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+    function stageConfig(n){ return { count: 5 + (n-1)*3, speed: 80 + (n-1)*18, hp: 1 + Math.floor((n-1)/2) }; }
+
+    function spawnMonsters(n){
+      const colors=['#7dc8ff','#ffd166','#ff7d99','#7dffa7','#c9c9ff'];
+      const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
+      for(let i=0;i<n;i++){
+        const edge=Math.floor(rand(0,4)); let x,y;
+        if(edge===0){x=-20;y=rand(0,h);} else if(edge===1){x=w+20;y=rand(0,h);} else if(edge===2){x=rand(0,w);y=-20;} else {x=rand(0,w);y=h+20;}
+        monsters.push({x,y,vx:0,vy:0,size:rand(14,22),color:colors[i%colors.length],hp:stageConfig(stage).hp});
+      }
+    }
+
+    let shotCooldown=0; const SHOT_RATE=0.22, BULLET_SPEED=520, BULLET_LIFE=1.2;
+    function tryShoot(dt){
+      if(!input.shooting) return; shotCooldown-=dt; if(shotCooldown>0) return; shotCooldown=SHOT_RATE;
+      const dx=input.mouseX-player.x, dy=input.mouseY-player.y; const L=Math.hypot(dx,dy)||1; const ux=dx/L, uy=dy/L;
+      bullets.push({x:player.x+ux*(player.size+6), y:player.y+uy*(player.size+6), vx:ux*BULLET_SPEED, vy:uy*BULLET_SPEED, r:4, life:BULLET_LIFE});
+    }
+
+    function circleRectOverlap(cx,cy,cr,rx,ry,rs){
+      const nx=clamp(cx,rx-rs,rx+rs), ny=clamp(cy,ry-rs,ry+rs); const dx=cx-nx, dy=cy-ny; return dx*dx+dy*dy<=cr*cr;
+    }
+
+    function gameOver(){ running=false; paused=false; showOverlay('GAME OVER', `점수 ${score} • 스테이지 ${stage}`); pauseBtn.disabled=true; restartBtn.disabled=false; }
+    function showToast(t){ toast.textContent=t; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),800); }
+    function showOverlay(title, sub){
+      overlay.innerHTML=`<div class="pill">ARCADE</div><div class="title">${title}</div><div class="subtitle">${sub??''}</div>
+      <button id="resumeOrStart" class="btn" style="font-size:18px; padding:12px 18px">${title==='PAUSED'?'▶ 계속하기':'🔄 다시 시작'}</button>
+      <div class="hint">조작: 마우스 이동 / 좌클릭·스페이스 - 공격 • P: 일시정지</div>`;
+      overlay.style.display='flex';
+      document.getElementById('resumeOrStart').onclick=()=>restart();
+    }
+    function hideOverlay(){ overlay.style.display='none'; }
+
+    function restart(){ score=0; stage=1; bullets=[]; monsters=[]; running=true; paused=false; lastTime=0; shotCooldown=0;
+      scoreEl.textContent=score; stageEl.textContent=stage; pauseBtn.disabled=false; restartBtn.disabled=false; hideOverlay();
+      const cfg=stageConfig(stage); spawnMonsters(cfg.count); showToast(`Stage ${stage}`); requestAnimationFrame(loop); }
+    function nextStage(){ stage++; stageEl.textContent=stage; spawnMonsters(stageConfig(stage).count); showToast(`Stage ${stage}`); }
+
+    function loop(ts){ if(!running) return; if(!lastTime) lastTime=ts; const dt=Math.min(0.032,(ts-lastTime)/1000); lastTime=ts; if(!paused){ update(dt); render(); } requestAnimationFrame(loop); }
+
+    function update(dt){
+      const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio;
+      const dx=input.mouseX-player.x, dy=input.mouseY-player.y; const dist=Math.hypot(dx,dy); const step=Math.min(player.speed*dt, dist);
+      if(dist>0){ player.x+=dx/dist*step; player.y+=dy/dist*step; }
+      tryShoot(dt);
+      for(let i=bullets.length-1;i>=0;i--){ const b=bullets[i]; b.x+=b.vx*dt; b.y+=b.vy*dt; b.life-=dt; if(b.life<=0||b.x<-10||b.x>w+10||b.y<-10||b.y>h+10) bullets.splice(i,1); }
+      const cfg=stageConfig(stage);
+      for(let i=monsters.length-1;i>=0;i--){ const m=monsters[i]; const mx=player.x-m.x, my=player.y-m.y; const ml=Math.hypot(mx,my)||1; const ux=mx/ml, uy=my/ml; m.x+=ux*(cfg.speed+(i%3)*12)*dt; m.y+=uy*(cfg.speed+(i%3)*12)*dt; if(circleRectOverlap(player.x,player.y,player.size,m.x,m.y,m.size)){ gameOver(); return; } }
+      for(let i=monsters.length-1;i>=0;i--){ const m=monsters[i]; for(let j=bullets.length-1;j>=0;j--){ const b=bullets[j]; if(circleRectOverlap(b.x,b.y,b.r,m.x,m.y,m.size)){ bullets.splice(j,1); m.hp-=1; if(m.hp<=0){ monsters.splice(i,1); score++; scoreEl.textContent=score; } break; } } }
+      if(monsters.length===0) nextStage();
+      player.x=clamp(player.x,player.size,w-player.size); player.y=clamp(player.y,player.size,h-player.size);
+    }
+
+    function render(){
+      const w=canvas.width/devicePixelRatio, h=canvas.height/devicePixelRatio; ctx.clearRect(0,0,w,h);
+      ctx.save(); ctx.globalAlpha=.08; const grid=28; ctx.strokeStyle='#8aa0ff'; ctx.lineWidth=1;
+      for(let x=0;x<w;x+=grid){ ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,h); ctx.stroke(); }
+      for(let y=0;y<h;y+=grid){ ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(w,y); ctx.stroke(); } ctx.restore();
+      ctx.fillStyle='#b4f0ff'; for(const b of bullets){ ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill(); }
+      for(const m of monsters){ ctx.fillStyle=m.color; roundedRect(ctx,m.x-m.size,m.y-m.size,m.size*2,m.size*2,6); ctx.fill(); const bw=m.size*2,bh=4; ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(m.x-m.size,m.y-m.size-8,bw,bh); ctx.fillStyle='#7dff7d'; const ratio=Math.max(0,m.hp/stageConfig(stage).hp); ctx.fillRect(m.x-m.size,m.y-m.size-8,bw*ratio,bh); }
+      ctx.save(); ctx.shadowColor='#8ae66b'; ctx.shadowBlur=16; ctx.fillStyle=player.color; roundedRect(ctx,player.x-player.size,player.y-player.size,player.size*2,player.size*2,5); ctx.fill(); ctx.restore();
+    }
+    function roundedRect(ctx,x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+    canvas.addEventListener('mousemove',e=>{ const r=canvas.getBoundingClientRect(); input.mouseX=e.clientX-r.left; input.mouseY=e.clientY-r.top; });
+    canvas.addEventListener('mousedown',()=> input.shooting=true); window.addEventListener('mouseup',()=> input.shooting=false);
+    canvas.addEventListener('touchstart',e=>{ const t=e.touches[0]; const r=canvas.getBoundingClientRect(); input.mouseX=t.clientX-r.left; input.mouseY=t.clientY-r.top; input.shooting=true; },{passive:true});
+    canvas.addEventListener('touchmove',e=>{ const t=e.touches[0]; const r=canvas.getBoundingClientRect(); input.mouseX=t.clientX-r.left; input.mouseY=t.clientY-r.top; },{passive:true});
+    canvas.addEventListener('touchend',()=> input.shooting=false,{passive:true});
+
+    window.addEventListener('keydown',e=>{ if(e.code==='Space'){ input.shooting=true; e.preventDefault(); } if(e.key.toLowerCase()==='p'&&running){ togglePause(); } },{passive:false});
+    window.addEventListener('keyup',e=>{ if(e.code==='Space'){ input.shooting=false; e.preventDefault(); } },{passive:false});
+
+    startBtn.addEventListener('click',restart); pauseBtn.addEventListener('click',togglePause); restartBtn.addEventListener('click',restart);
+    function togglePause(){ if(!running) return; paused=!paused; pauseBtn.textContent=paused?'▶ 재개 (P)':'⏸️ 일시 정지 (P)'; if(paused){ showOverlay('PAUSED', `점수 ${score} • 스테이지 ${stage}`);} else { hideOverlay(); } }
+    pauseBtn.disabled=true; restartBtn.disabled=true;
+  </script>
+</body>
+</html>
