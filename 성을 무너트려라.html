@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>성을 무너뜨려라 - 튼튼/대형 성 + 적·아이템</title>
+<style>
+  /* ========== 테마 ========== */
+  :root{
+    --bg:#0f1226;--panel:#1b1e36;--text:#e7e9ff;--accent:#7aa2ff;--brick:#9da5b4;--brick-shadow:#707788;--soldier:#23d18b;--bullet:#ffd166;--danger:#ff5678;--success:#70e000;--enemy:#ff9f1c;--item:#7cf2ff
+  }
+  html,body{height:100%}
+  body{margin:0;background:radial-gradient(1200px 800px at 50% -10%,#1c2244,var(--bg));color:var(--text);font-family:"Pretendard","Noto Sans KR",system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial,"Apple SD Gothic Neo","Noto Sans",sans-serif;display:grid;grid-template-rows:auto 1fr auto;gap:10px}
+
+  /* ========== 상단 HUD(위쪽 중앙) ========== */
+  .topbar{background:linear-gradient(0deg,#171a31,var(--panel));border-bottom:1px solid #2a2f52;display:flex;align-items:center;justify-content:center;padding:10px 16px;position:sticky;top:0;z-index:10}
+  .hud{display:flex;align-items:center;gap:24px;font-weight:700;letter-spacing:.5px}
+  .label{opacity:.7;margin-right:6px;font-weight:600}
+  .value{color:var(--accent)}
+
+  /* ========== 메인/캔버스 ========== */
+  .wrap{display:grid;place-items:center;padding:8px 16px 20px}
+  canvas{background:linear-gradient(180deg,#0b0e1f 0%,#0f1226 100%);border-radius:16px;border:1px solid #22284b;box-shadow:0 12px 40px rgba(0,0,0,.45),inset 0 0 0 1px rgba(255,255,255,.04);image-rendering:pixelated}
+
+  /* ========== 하단 버튼 ========== */
+  .controls{display:flex;justify-content:center;gap:10px;padding:10px 16px 20px}
+  button.ui{background:#23274d;color:var(--text);border:1px solid #2f3563;border-bottom-color:#1b2042;border-radius:10px;padding:10px 16px;font-size:16px;font-weight:700;cursor:pointer;transition:transform .05s ease,filter .1s ease,background .2s ease}
+  button.ui:hover{filter:brightness(1.08)}
+  button.ui:active{transform:translateY(1px)}
+  button.ui[disabled]{opacity:.5;cursor:not-allowed}
+
+  /* ========== 중앙 배너(승/패/안내) ========== */
+  .banner{position:absolute;inset:0;display:grid;place-items:center;pointer-events:none}
+  .banner .msg{font-size:42px;font-weight:900;padding:14px 22px;border-radius:14px;background:rgba(0,0,0,.45);backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,.08);text-shadow:0 2px 0 rgba(0,0,0,.35)}
+  .msg.win{color:var(--success)}
+  .msg.lose{color:var(--danger)}
+  .msg.info{color:var(--accent)}
+</style>
+</head>
+<body>
+  <!-- ========== 상단 점수판(위쪽 중앙) ========== -->
+  <header class="topbar">
+    <div class="hud" role="status" aria-live="polite">
+      <div class="stat"><span class="label">점수</span><span id="score" class="value">0</span></div>
+      <div class="stat"><span class="label">남은시간</span><span id="time" class="value">120</span>s</div>
+      <div class="stat"><span class="label">남은 벽돌</span><span id="left" class="value">-</span></div>
+      <div class="stat"><span class="label">파워</span><span id="power" class="value">1</span>x</div>
+    </div>
+  </header>
+
+  <!-- ========== 게임 화면 ========== -->
+  <main class="wrap">
+    <div style="position:relative">
+      <canvas id="game" width="960" height="540" aria-label="성을 무너뜨려라"></canvas>
+      <div class="banner" id="banner" hidden>
+        <div class="msg info" id="bannerMsg">READY</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ========== 컨트롤 버튼 ========== -->
+  <footer class="controls">
+    <button id="startBtn" class="ui">▶ 시작</button>
+    <button id="restartBtn" class="ui" disabled>↻ 재시작</button>
+  </footer>
+
+<script>
+// =====================================================================
+//  성을 무너뜨려라 - 튼튼/대형 성 + 적·아이템 포함 (HTML5 Canvas)
+//  규칙 요약
+//   - 조작: ← → 이동, ↑ 또는 Space = 위로 발사, 마우스 클릭 = 클릭 지점 방향 발사
+//   - 시작 버튼으로 시작, 재시작 버튼 제공
+//   - 제한시간: 120초(2분)
+//   - 점수: "벽돌이 파괴될 때" +1 (HP를 0으로 만들었을 때만 득점)
+//   - 성: 크고 튼튼(각 벽돌 HP 3), 모두 부수면 승리
+//   - 적: 위에서 떨어짐 / 맞추면 아이템 드랍 / 아이템 획득 시 파워(+1, 최대 5) → 총알 관통력 증가
+//   - 패배: 시간 0이 되거나 적과 충돌 시
+//   - 효과음 없음
+// =====================================================================
+(() => {
+  /** @type {HTMLCanvasElement} */
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // HUD & 버튼
+  const scoreEl = document.getElementById('score');
+  const timeEl  = document.getElementById('time');
+  const leftEl  = document.getElementById('left');
+  const powerEl = document.getElementById('power');
+  const banner  = document.getElementById('banner');
+  const bannerMsg = document.getElementById('bannerMsg');
+  const startBtn = document.getElementById('startBtn');
+  const restartBtn = document.getElementById('restartBtn');
+
+  // 상수
+  const W = canvas.width, H = canvas.height;
+  const GROUND_Y = H - 40;                 // 바닥선
+  const PLAYER_SPEED = 280;                 // px/s
+  const BULLET_SPEED = 560;                 // px/s
+  const MAX_TIME = 120;                     // 2분
+  const BRICK_W = 36, BRICK_H = 20;         // 벽돌 크기(조금 작게 해서 많이 배치)
+  const CASTLE_COLS = 20, CASTLE_ROWS = 10; // 대형 성 규모
+  const BRICK_HP = 3;                       // 튼튼한 벽돌 HP
+  const ENEMY_SPAWN = 1.2;                  // 적 스폰 기본 주기(초)
+
+  // 상태
+  let running=false, last=0, timeLeft=MAX_TIME, score=0;
+  let power=1, enemyTimer=0, wave=0;
+
+  // 플레이어(군인)
+  const player = { x: W*0.5, y: GROUND_Y-20, w: 28, h: 28, vx: 0 };
+
+  // 엔터티 컨테이너
+  /** @type {{x:number,y:number,vx:number,vy:number,r:number,pierce:number,_dead?:boolean}[]} */
+  let bullets = [];
+  /** @type {{x:number,y:number,w:number,h:number,hp:number,alive:boolean}[]} */
+  let bricks = [];
+  /** @type {{x:number,y:number,vy:number,w:number,h:number,_dead?:boolean}[]} */
+  let enemies = [];
+  /** @type {{x:number,y:number,vy:number,r:number,ttl:number,_dead?:boolean}[]} */
+  let items = [];
+
+  // 유틸
+  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const rand=(a,b)=>a+Math.random()*(b-a);
+
+  function resetGame(){
+    score=0; timeLeft=MAX_TIME; power=1; wave=0; enemyTimer=0; last=0;
+    scoreEl.textContent=score; timeEl.textContent=timeLeft; powerEl.textContent=power;
+    player.x=W*0.5; player.vx=0;
+    bullets.length=0; enemies.length=0; items.length=0; bricks=buildCastle();
+    leftEl.textContent=String(bricks.filter(b=>b.alive).length);
+    hideBanner();
+  }
+
+  // 피라미드형 대형 성 구축(중앙 정렬)
+  function buildCastle(){
+    const list=[];
+    for(let r=0;r<CASTLE_ROWS;r++){
+      const shrink=Math.floor(r/2);                  // 위로 갈수록 좁아짐
+      const cols=CASTLE_COLS - shrink*2;
+      const startX=Math.floor((CASTLE_COLS-cols)/2);
+      for(let c=0;c<cols;c++){
+        const x=(startX+c)*BRICK_W + (W-CASTLE_COLS*BRICK_W)/2;
+        const y=GROUND_Y - 90 - r*BRICK_H;          // 바닥 위로 띄워 배치
+        list.push({x,y,w:BRICK_W,h:BRICK_H,hp:BRICK_HP,alive:true});
+      }
+    }
+    return list;
+  }
+
+  // 그리기
+  function drawBackground(){
+    ctx.save();
+    // 별 배경(레트로 감성)
+    ctx.globalAlpha=.9;
+    for(let i=0;i<70;i++){
+      const x=(i*137)%W, y=(i*97)%(H-140);
+      ctx.fillStyle=i%7?'#b9c0ff':'#ffffff';
+      ctx.fillRect(x,y,2,2);
+    }
+    // 땅
+    ctx.fillStyle='#0b0e1f';
+    ctx.fillRect(0,GROUND_Y,W,H-GROUND_Y);
+    ctx.restore();
+  }
+  function drawPlayer(){
+    ctx.save(); ctx.translate(player.x,player.y);
+    // 그림자/몸통
+    ctx.fillStyle='rgba(0,0,0,.25)'; ctx.fillRect(-player.w/2+2,-player.h/2+6,player.w,player.h);
+    ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--soldier').trim()||'#23d18b';
+    ctx.fillRect(-player.w/2,-player.h/2+4,player.w-4,player.h-4);
+    // 헬멧
+    ctx.fillStyle='#16a56b'; ctx.fillRect(-player.w/3,-player.h/2-2,player.w*.66,8);
+    // 총구(위)
+    ctx.fillStyle='#89f5c1'; ctx.fillRect(-3,-player.h/2-8,6,8);
+    ctx.restore();
+  }
+  function drawBricks(){
+    for(const b of bricks){ if(!b.alive) continue;
+      // HP에 따라 명암으로 표현
+      const shade = Math.max(50, 220 - (BRICK_HP - b.hp)*60);
+      ctx.fillStyle = `rgb(${shade},${shade},${shade})`;
+      ctx.fillRect(b.x,b.y,b.w,b.h);
+      ctx.fillStyle='rgba(255,255,255,.08)'; ctx.fillRect(b.x,b.y,b.w,4);
+      ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--brick-shadow').trim()||'#707788';
+      ctx.fillRect(b.x,b.y+b.h-4,b.w,4);
+    }
+  }
+  function drawBullets(){
+    ctx.save();
+    for(const p of bullets){ ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--bullet').trim()||'#ffd166'; ctx.fill(); }
+    ctx.restore();
+  }
+  function drawEnemies(){
+    ctx.save();
+    for(const e of enemies){
+      ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--enemy').trim()||'#ff9f1c';
+      ctx.fillRect(e.x,e.y,e.w,e.h);
+      // 눈 아이콘
+      ctx.fillStyle='#2b2b2b'; ctx.fillRect(e.x+4,e.y+4,4,4); ctx.fillRect(e.x+e.w-8,e.y+4,4,4);
+    }
+    ctx.restore();
+  }
+  function drawItems(){
+    ctx.save();
+    for(const it of items){
+      ctx.beginPath(); ctx.arc(it.x,it.y,it.r,0,Math.PI*2);
+      ctx.fillStyle=getComputedStyle(document.documentElement).getPropertyValue('--item').trim()||'#7cf2ff';
+      ctx.fill();
+      // 반짝 테두리
+      ctx.globalAlpha=.45; ctx.beginPath(); ctx.arc(it.x,it.y,it.r*1.7,0,Math.PI*2); ctx.strokeStyle='rgba(255,255,255,.25)'; ctx.stroke(); ctx.globalAlpha=1;
+    }
+    ctx.restore();
+  }
+
+  // 업데이트
+  function update(dt){
+    // 시간 흐름
+    timeLeft -= dt; if(timeLeft < 0) timeLeft = 0; timeEl.textContent = String(Math.ceil(timeLeft));
+    wave += dt; // 난이도 점증(적 속도/스폰)
+
+    // 플레이어 이동
+    player.x += player.vx * dt; player.x = clamp(player.x, 20, W-20);
+
+    // 총알 이동
+    for(const p of bullets){ p.x += p.vx*dt; p.y += p.vy*dt; }
+
+    // 적 스폰/이동(시간이 지날수록 더 자주/빠르게)
+    enemyTimer += dt; const spawnEvery = Math.max(.5, ENEMY_SPAWN - wave*0.02);
+    if(enemyTimer >= spawnEvery){ enemyTimer = 0; spawnEnemy(); }
+    for(const e of enemies){ e.y += e.vy*dt; if(e.y > GROUND_Y-8) e._dead = true; }
+
+    // 아이템 이동/수명
+    for(const it of items){ it.y += it.vy*dt; it.ttl -= dt; if(it.ttl <= 0 || it.y > H+20) it._dead = true; }
+
+    // 총알-벽돌 충돌(HP 감소, 파괴 시 점수 +1)
+    for(const p of bullets){ if(p._dead) continue; 
+      for(const b of bricks){ if(!b.alive) continue;
+        if(p.x>b.x && p.x<b.x+b.w && p.y>b.y && p.y<b.y+b.h){
+          b.hp--; if(b.hp <= 0){ b.alive=false; score += 1; scoreEl.textContent = String(score); }
+          p.pierce--; if(p.pierce <= 0){ p._dead = true; }
+          break; // 한 번에 한 벽돌만 처리
+        }
+      }
+    }
+
+    // 총알-적 충돌(아이템 드랍)
+    for(const p of bullets){ if(p._dead) continue;
+      for(const e of enemies){ if(e._dead) continue;
+        if(p.x>e.x && p.x<e.x+e.w && p.y>e.y && p.y<e.y+e.h){ e._dead=true; p._dead=true; dropItem(e.x+e.w/2, e.y+e.h/2); break; }
+      }
+    }
+
+    // 플레이어-아이템 충돌(파워 업)
+    for(const it of items){ if(it._dead) continue; 
+      if(Math.abs(it.x-player.x) < (it.r + player.w*0.5) && Math.abs(it.y-player.y) < (it.r + player.h*0.5)){
+        it._dead = true; power = Math.min(5, power+1); powerEl.textContent = String(power); flashBanner('POWER UP! '+power+'x');
+      }
+    }
+
+    // 플레이어-적 충돌(즉시 패배)
+    for(const e of enemies){ if(e._dead) continue; if(hitAABB(player, e)){ showBanner('HIT! GAME OVER', false); stop(); break; } }
+
+    // 화면 밖/사망 정리
+    bullets = bullets.filter(p => !p._dead && p.x>=-10 && p.x<=W+10 && p.y>=-10 && p.y<=H+10);
+    enemies = enemies.filter(e => !e._dead);
+    items   = items.filter(it=> !it._dead);
+
+    // 남은 벽돌/승패 판정
+    const left = bricks.reduce((a,b)=>a+(b.alive?1:0),0); leftEl.textContent = String(left);
+    if(left === 0){ showBanner('VICTORY!', true); stop(); }
+    else if(timeLeft <= 0){ showBanner('TIME UP', false); stop(); }
+  }
+
+  function render(){
+    ctx.clearRect(0,0,W,H);
+    drawBackground(); drawBricks(); drawPlayer(); drawBullets(); drawEnemies(); drawItems();
+  }
+
+  function loop(ts){ if(!running) return; if(!last) last = ts; const dt = Math.min(.033, (ts-last)/1000); last = ts; update(dt); render(); requestAnimationFrame(loop); }
+
+  function start(){ resetGame(); running = true; startBtn.disabled = true; restartBtn.disabled = false; requestAnimationFrame(loop); }
+  function stop(){ running = false; startBtn.disabled = true; restartBtn.disabled = false; }
+
+  // 스폰/드랍 헬퍼
+  function spawnEnemy(){
+    const w=26,h=20; const x=rand(30,W-30-w); const y=-h-6; const vy=rand(70,120)+wave*2.2; // 점점 빨라짐
+    enemies.push({x,y,w,h,vy});
+  }
+  function dropItem(x,y){ items.push({x,y,vy:90,r:8,ttl:8}); }
+
+  // 배너
+  function showBanner(text,win){ banner.hidden=false; bannerMsg.textContent=text; bannerMsg.className='msg '+(win?'win':'lose'); }
+  function hideBanner(){ banner.hidden=true; bannerMsg.textContent=''; bannerMsg.className='msg info'; }
+  let infoTimer=0; function flashBanner(text){ banner.hidden=false; bannerMsg.textContent=text; bannerMsg.className='msg info'; infoTimer=0.8; }
+
+  // 충돌 보조(AABB, 플레이어-적)
+  function hitAABB(a,b){ return Math.abs((a.x) - (b.x + b.w/2)) <= (a.w/2 + b.w/2) && Math.abs((a.y) - (b.y + b.h/2)) <= (a.h/2 + b.h/2); }
+
+  // 발사 로직
+  function shootToward(tx,ty){
+    const sx=player.x, sy=player.y-player.h/2-10; const dx=tx-sx, dy=ty-sy; const len=Math.hypot(dx,dy)||1;
+    const vx=(dx/len)*BULLET_SPEED, vy=(dy/len)*BULLET_SPEED; bullets.push({x:sx,y:sy,vx,vy,r:4,pierce:power});
+  }
+  function shootUp(){ const sx=player.x, sy=player.y-player.h/2-10; bullets.push({x:sx,y:sy,vx:0,vy:-BULLET_SPEED,r:4,pierce:power}); }
+
+  // 입력
+  const keys=new Set();
+  window.addEventListener('keydown',e=>{ if(e.repeat) return; keys.add(e.key);
+    if(e.key==='ArrowLeft') player.vx=-PLAYER_SPEED; else if(e.key==='ArrowRight') player.vx=PLAYER_SPEED; else if(e.key==='ArrowUp'||e.key===' ') if(running) shootUp();
+  });
+  window.addEventListener('keyup',e=>{ keys.delete(e.key);
+    if(!keys.has('ArrowLeft') && !keys.has('ArrowRight')) player.vx=0; else if(keys.has('ArrowLeft')) player.vx=-PLAYER_SPEED; else if(keys.has('ArrowRight')) player.vx=PLAYER_SPEED;
+  });
+  canvas.addEventListener('click',e=>{ if(!running) return; const rect=canvas.getBoundingClientRect(); const tx=(e.clientX-rect.left)*(canvas.width/rect.width); const ty=(e.clientY-rect.top)*(canvas.height/rect.height); shootToward(tx,ty); });
+
+  // 버튼
+  startBtn.addEventListener('click',()=>{ if(!running) start(); });
+  restartBtn.addEventListener('click',()=>{ resetGame(); running=true; last=0; requestAnimationFrame(loop); });
+
+  // 초기 화면
+  resetGame(); render(); flashBanner('START를 누르세요');
+  (function bannerLoop(){ if(infoTimer>0){ infoTimer-=.06; if(infoTimer<=0) hideBanner(); } requestAnimationFrame(bannerLoop); })();
+})();
+</script>
+</body>
+</html>
