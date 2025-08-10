@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>리듬게임 (클릭 · 스페이스)</title>
+  <style>
+    /* ------ Layout ------ */
+    :root{
+      --bg:#0b0d12;         /* 어두운 배경 */
+      --panel:#141923;      /* 카드 배경 */
+      --text:#e8ecf1;       /* 기본 텍스트 */
+      --muted:#9aa6b2;      /* 보조 텍스트 */
+      --accent:#4ea1ff;     /* 파란 포인트 */
+      --good:#5bd65b;       /* Great 색 */
+      --okay:#ffd166;       /* Not Bad 색 */
+      --bad:#ff6b6b;        /* Bad 색 */
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0; background:var(--bg); color:var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Apple SD Gothic Neo, "맑은 고딕", Arial, sans-serif;
+      display:flex; flex-direction:column; min-height:100svh; align-items:center; gap:18px;
+    }
+    header{ padding:20px 16px 0; text-align:center }
+    h1{ margin:0 0 6px; font-size:clamp(24px,3.6vw,36px); letter-spacing:0.2px }
+    .sub{ color:var(--muted); font-size:14px }
+
+    .hud{ display:flex; flex-wrap:wrap; gap:10px; justify-content:center; }
+    .card{ background:var(--panel); border:1px solid #1f2633; border-radius:14px; padding:10px 12px; min-width:110px; text-align:center }
+    .big{ font-size:20px; font-weight:700 }
+    .label{ color:var(--muted); font-size:12px }
+
+    /* ------ Stage (센터 원) ------ */
+    .stage-wrap{ display:grid; place-items:center; flex:1; width:100%; max-width:840px; padding:8px 16px }
+    .stage{
+      position:relative; width:min(56vmin,480px); aspect-ratio:1/1; display:grid; place-items:center;
+    }
+    .circle{
+      width:70%; aspect-ratio:1/1; border-radius:50%;
+      border:6px solid var(--accent); background:transparent; filter:drop-shadow(0 0 14px rgba(78,161,255,.35));
+      transform:scale(1); transition:transform .12s ease-out;
+    }
+    .pulse{ animation:pulse .28s ease-out }
+    @keyframes pulse{ from{ transform:scale(.86) } to{ transform:scale(1.08) } }
+
+    /* 판정 텍스트 */
+    .judge{ position:absolute; bottom:-28px; left:50%; transform:translateX(-50%);
+      font-weight:800; letter-spacing:.4px; text-shadow:0 2px 10px rgba(0,0,0,.35) }
+    .judge.great{ color:var(--good) }
+    .judge.okay{ color:var(--okay) }
+    .judge.bad{ color:var(--bad) }
+
+    /* ------ Controls ------ */
+    .controls{ display:flex; gap:10px; flex-wrap:wrap; justify-content:center; padding:0 16px 24px }
+    button{ border:1px solid #263043; background:#1a2230; color:var(--text); border-radius:12px; padding:10px 14px; cursor:pointer; font-weight:700 }
+    button:hover{ filter:brightness(1.1) }
+    button:disabled{ opacity:.55; cursor:not-allowed }
+    .settings{ background:#121826; border:1px solid #2a3550; margin-top:6px; border-radius:12px; padding:14px; width:min(720px,92vw) }
+    .row{ display:flex; gap:12px; align-items:center; flex-wrap:wrap }
+    input[type="range"]{ width:220px }
+    .toggle{ display:flex; align-items:center; gap:8px; color:var(--muted) }
+
+    footer{ color:var(--muted); font-size:12px; padding:0 0 14px }
+    .kbd{ padding:2px 6px; border:1px solid #2a3550; border-bottom-width:3px; border-radius:6px; background:#0f1521; font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>리듬게임</h1>
+    <div class="sub">마우스 클릭 또는 <span class="kbd">Space</span> 로 박자 맞추기 • Great ≥ 80%면 클리어</div>
+  </header>
+
+  <!-- 실시간 정보 표시 -->
+  <section class="hud" aria-label="상태 표시">
+    <div class="card"><div class="label">점수</div><div id="score" class="big">0</div></div>
+    <div class="card"><div class="label">Great%</div><div id="greatPct" class="big">0%</div></div>
+    <div class="card"><div class="label">진행</div><div id="progress" class="big">0 / 0</div></div>
+    <div class="card"><div class="label">상태</div><div id="state" class="big">대기</div></div>
+  </section>
+
+  <!-- 메인 스테이지: 파란 라인의 동그라미 -->
+  <main class="stage-wrap">
+    <div class="stage" id="stage" role="button" aria-label="원을 클릭해 박자 입력">
+      <div class="circle" id="circle"></div>
+      <div id="judge" class="judge">&nbsp;</div>
+    </div>
+  </main>
+
+  <!-- 컨트롤러 & 설정 -->
+  <section class="controls" aria-label="게임 컨트롤">
+    <button id="btnStart">게임 시작</button>
+    <button id="btnPause" disabled>일시 정지</button>
+    <button id="btnResume" disabled>계속</button>
+    <button id="btnRestart" disabled>재시작</button>
+  </section>
+
+  <section class="settings" aria-label="설정">
+    <div class="row" style="justify-content:space-between">
+      <div class="row">
+        <label for="bpm"><strong>박자 속도 (BPM)</strong></label>
+        <input id="bpm" type="range" min="60" max="200" value="100" step="1" />
+        <span id="bpmVal" class="label">100</span>
+      </div>
+      <label class="toggle"><input type="checkbox" id="soundOn" /> 비프음 사용</label>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="label">판정 기준 (±ms): Great 80 / Not Bad 150 · 그 외 Bad</div>
+    </div>
+  </section>
+
+  <footer>라운드 종료 시 Great 비율이 80% 이상이면 <strong>CLEAR</strong>, 아니면 실패입니다.</footer>
+
+  <script>
+    // =============================
+    // 리듬게임 로직 (순수 JS)
+    // =============================
+
+    // 엘리먼트 참조
+    const circle = document.getElementById('circle');
+    const judgeEl = document.getElementById('judge');
+    const scoreEl = document.getElementById('score');
+    const greatPctEl = document.getElementById('greatPct');
+    const progressEl = document.getElementById('progress');
+    const stateEl = document.getElementById('state');
+
+    const btnStart = document.getElementById('btnStart');
+    const btnPause = document.getElementById('btnPause');
+    const btnResume = document.getElementById('btnResume');
+    const btnRestart = document.getElementById('btnRestart');
+
+    const bpmSlider = document.getElementById('bpm');
+    const bpmVal = document.getElementById('bpmVal');
+    const soundOn = document.getElementById('soundOn');
+
+    // 판정 윈도(밀리초)
+    const GREAT_MS = 80;     // |Δt| ≤ 80ms
+    const OKAY_MS  = 150;    // |Δt| ≤ 150ms
+
+    // 한 라운드 비트 수
+    const TOTAL_BEATS = 32;  // 32박으로 간단 라운드
+
+    // 점수 룰
+    const SCORE_GREAT = 100;
+    const SCORE_OKAY  = 50;
+    const SCORE_BAD   = 0;
+
+    // 내부 상태
+    let bpm = parseInt(bpmSlider.value, 10);
+    let interval = 60000 / bpm;   // ms/beat
+
+    let beatTimer = null;         // setInterval 핸들
+    let startTime = null;         // 라운드 시작 시간(ms)
+    let pausedAt = null;          // 일시정지 시각
+    let pauseAccum = 0;           // 누적 정지 시간(보정)
+
+    let beatIndex = 0;            // 0..TOTAL_BEATS-1 (진행 표시용)
+    let lastJudgedBeat = -999;    // 같은 박 중복 입력 방지
+
+    let score = 0;
+    let greatCount = 0;           // Great 누적
+
+    // "성공률은 떨어지지 않음"을 위한 표시용 퍼센트(최댓값 유지)
+    let greatPctShown = 0;        // 화면에 표시되는 Great%
+
+    // WebAudio (비프음)
+    let audioCtx = null;
+    function beep(){
+      if(!soundOn.checked) return;
+      if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.type = 'sine';
+      o.frequency.value = 880; // A5
+      g.gain.value = 0.06;     // 작은 볼륨
+      o.connect(g).connect(audioCtx.destination);
+      o.start();
+      setTimeout(()=>{ o.stop(); }, 70);
+    }
+
+    // HUD 업데이트 (표시만 갱신)
+    function updateHUD(){
+      scoreEl.textContent = score;
+      // 진행 표시: 지나간 박 수 / 총 박 수
+      progressEl.textContent = `${Math.min(beatIndex, TOTAL_BEATS)} / ${TOTAL_BEATS}`;
+      // 성공률은 greatPctShown(최댓값 누적)으로 표시 → Bad/Not Bad가 나와도 내려가지 않음
+      greatPctEl.textContent = greatPctShown + '%';
+    }
+
+    function setJudge(text, cls){
+      judgeEl.textContent = text || '\u00A0';
+      judgeEl.className = 'judge' + (cls ? ' ' + cls : '');
+    }
+
+    // 박자 시각 계산 (보정 포함)
+    function beatTime(i){ return startTime + pauseAccum + i * interval; }
+
+    // 스테이지 원 애니메이션
+    function pulse(){
+      circle.classList.remove('pulse');
+      void circle.offsetWidth; // reflow
+      circle.classList.add('pulse');
+    }
+
+    // 박자 진행 루프
+    function onBeat(){
+      pulse();
+      beep();
+      beatIndex++;
+      updateHUD();
+      if(beatIndex >= TOTAL_BEATS){
+        endRound();
+      }
+    }
+
+    // 입력 처리 (클릭/스페이스)
+    function handleInput(){
+      if(startTime===null) return;         // 시작 전 무시
+      if(beatIndex >= TOTAL_BEATS) return; // 종료 후 무시
+
+      const now = performance.now();
+      const k = Math.round((now - (startTime + pauseAccum)) / interval);
+      const nearest = beatTime(k);
+      const dt = Math.abs(now - nearest);
+
+      // 같은 박 중복 입력 방지
+      if(k === lastJudgedBeat) return;
+      lastJudgedBeat = k;
+
+      let add = 0; let label = 'Bad'; let cls = 'bad';
+      if(dt <= GREAT_MS){
+        add = SCORE_GREAT; label = 'Great'; cls = 'great';
+        greatCount++;
+        // 성공률(표시용) 갱신: 총박 대비 현재 Great%를 계산해, 이전 표시값보다 크면 올림(절대 내려가지 않음)
+        const pct = Math.round((greatCount / TOTAL_BEATS) * 100);
+        if(pct > greatPctShown) greatPctShown = pct;
+      }
+      else if(dt <= OKAY_MS){
+        add = SCORE_OKAY; label = 'Not Bad'; cls = 'okay';
+        // 표시 퍼센트는 유지 → 내려가지 않음
+      }
+      else {
+        add = SCORE_BAD; // 표시 퍼센트 유지
+      }
+
+      score += add;
+      setJudge(label, cls);
+      updateHUD();
+    }
+
+    // 라운드 종료 & 판정
+    function endRound(){
+      stopTimer();
+      document.removeEventListener('keydown', onKey);
+      document.removeEventListener('click', onClickStage, true);
+
+      // 최종 퍼센트는 실제 Great 비율로 한 번 갱신(결과 고지용)
+      const finalPct = Math.round((greatCount / Math.max(1, TOTAL_BEATS)) * 100);
+      greatPctShown = Math.max(greatPctShown, finalPct); // 내려가지 않되, 더 높다면 반영
+      updateHUD();
+
+      const clear = finalPct >= 80; // 규칙: Great ≥ 80%면 클리어
+      stateEl.textContent = clear ? 'CLEAR' : '실패';
+      setJudge(clear ? '🎉 CLEAR!' : '😵 GAME OVER', clear ? 'great' : 'bad');
+
+      // 버튼 상태
+      btnStart.disabled = true;
+      btnPause.disabled = true;
+      btnResume.disabled = true;
+      btnRestart.disabled = false;
+    }
+
+    // 타이머 제어
+    function startTimer(){ if(!beatTimer) beatTimer = setInterval(onBeat, interval); }
+    function stopTimer(){ if(beatTimer){ clearInterval(beatTimer); beatTimer = null; } }
+
+    // 시작/일시정지/계속/재시작
+    function startGame(){
+      // 초기화
+      bpm = parseInt(bpmSlider.value, 10);
+      interval = 60000 / bpm;
+      startTime = performance.now();
+      pausedAt = null; pauseAccum = 0;
+      beatIndex = 0; lastJudgedBeat = -999;
+      score = 0; greatCount = 0; greatPctShown = 0;
+      setJudge('READY'); updateHUD(); stateEl.textContent = '진행 중';
+
+      // 기존 타이머 정리 후 시작
+      stopTimer();
+      startTimer();
+
+      // 입력 리스너 등록
+      document.addEventListener('keydown', onKey);
+      document.addEventListener('click', onClickStage, true);
+
+      // 버튼 상태
+      btnStart.disabled = true;
+      btnPause.disabled = false;
+      btnResume.disabled = true;
+      btnRestart.disabled = true;
+    }
+
+    function pauseGame(){
+      if(startTime===null || pausedAt) return;
+      pausedAt = performance.now();
+      stopTimer();
+      stateEl.textContent = '일시 정지';
+      btnPause.disabled = true; btnResume.disabled = false;
+    }
+
+    function resumeGame(){
+      if(!pausedAt) return;
+      const now = performance.now();
+      pauseAccum += (now - pausedAt); // 정지한 만큼 보정
+      pausedAt = null;
+      // BPM이 바뀌었을 수 있으니 갱신
+      bpm = parseInt(bpmSlider.value, 10);
+      interval = 60000 / bpm;
+      startTimer();
+      stateEl.textContent = '진행 중';
+      btnPause.disabled = false; btnResume.disabled = true;
+    }
+
+    function restartGame(){
+      stopTimer();
+      startTime = null; pausedAt = null; pauseAccum = 0;
+      beatIndex = 0; lastJudgedBeat = -999; score = 0; greatCount = 0; greatPctShown = 0;
+      setJudge('\u00A0'); updateHUD(); stateEl.textContent = '대기';
+      btnStart.disabled = false; btnPause.disabled = true; btnResume.disabled = true; btnRestart.disabled = true;
+    }
+
+    // 이벤트 핸들러
+    function onKey(e){
+      if(e.code === 'Space'){ e.preventDefault(); handleInput(); }
+    }
+    function onClickStage(e){
+      // 스테이지 영역 클릭만 허용
+      const stage = document.getElementById('stage');
+      if(stage.contains(e.target)) handleInput();
+    }
+
+    // 컨트롤 바인딩
+    btnStart.addEventListener('click', startGame);
+    btnPause.addEventListener('click', pauseGame);
+    btnResume.addEventListener('click', resumeGame);
+    btnRestart.addEventListener('click', restartGame);
+
+    // BPM 슬라이더 UI 반영
+    bpmSlider.addEventListener('input', ()=>{
+      bpmVal.textContent = bpmSlider.value;
+      // 진행 중일 때 속도 변경 즉시 반영
+      if(startTime!==null && !pausedAt){
+        bpm = parseInt(bpmSlider.value, 10);
+        interval = 60000 / bpm;
+        stopTimer();
+        startTimer();
+      }
+    });
+
+    // 초기 표시
+    bpmVal.textContent = bpmSlider.value;
+    updateHUD();
+    setJudge('\u00A0');
+  </script>
+</body>
+</html>
