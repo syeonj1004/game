@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>언젠간 슈퍼개미가 될꺼야! - 주식투자 시뮬레이션</title>
+  <style>
+    :root{
+      --bg:#0f1220; --fg:#e6e8ef; --muted:#9aa0b4; --accent:#7c9cff;
+      --up:#2ecc71; --down:#ff4d4f; --card:#171a2b; --border:#262a40;
+    }
+    *{box-sizing:border-box}
+    body{margin:0; background:var(--bg); color:var(--fg); font-family:system-ui,'Noto Sans KR',sans-serif}
+    button,input,select{font:inherit}
+    .app{display:grid; grid-template-rows:auto 1fr auto; min-height:100vh}
+    header{border-bottom:1px solid var(--border); background:#161a2a; padding:14px 16px; display:flex; align-items:center; gap:16px; flex-wrap:wrap}
+    header h1{margin:0; font-size:20px}
+    header .meta{display:flex; gap:12px; font-size:14px; color:var(--muted)}
+    .container{display:grid; grid-template-columns:260px 1fr 320px; gap:12px; padding:12px}
+
+    .panel{background:var(--card); border:1px solid var(--border); border-radius:14px; display:flex; flex-direction:column}
+    .panel h2{margin:0; padding:12px 14px; font-size:14px; color:var(--muted); border-bottom:1px solid var(--border)}
+    .list{padding:8px; display:grid; gap:6px; overflow:auto}
+    .ticker{display:flex; align-items:center; justify-content:space-between; gap:8px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; cursor:pointer; background:#121529}
+    .ticker.active{outline:2px solid var(--accent)}
+    .ticker .name{font-weight:800; font-size:14px; color:#ffffff; text-shadow:0 0 6px rgba(124,156,255,.65)}
+    .ticker .price{font-variant-numeric:tabular-nums; font-weight:700}
+
+    .chart-card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:10px; display:grid; grid-template-rows:auto 1fr auto; min-height:520px}
+    canvas{width:100%; height:340px; background:#0b0e1c; border-radius:10px}
+
+    table{width:100%; border-collapse:collapse; font-size:12px}
+    th,td{padding:6px 8px; border-top:1px solid var(--border); text-align:right}
+    th:first-child,td:first-child{text-align:left}
+
+    .trade-card{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px; display:grid; gap:10px; align-content:start}
+    .row{display:grid; grid-template-columns:1fr 1fr; gap:8px}
+    label{font-size:12px; color:var(--muted)}
+    input[type="number"],select{width:100%; padding:10px; border-radius:10px; border:1px solid var(--border); background:#0f1326; color:var(--fg)}
+    .btn{border:0; padding:10px 12px; border-radius:10px; cursor:pointer; font-weight:800}
+    .primary{background:var(--accent); color:#0b0e1c}
+    .success{background:var(--up); color:#04150c}
+    .danger{background:var(--down); color:#1e0506}
+    .ghost{background:#0f1326; color:var(--fg); border:1px solid var(--border)}
+
+    .portfolio{background:var(--card); border:1px solid var(--border); border-radius:14px; padding:12px; display:grid; gap:8px}
+    .kpi{background:#121529; border:1px solid var(--border); border-radius:10px; padding:10px}
+    .kpi .label{font-size:12px; color:var(--muted)}
+    .kpi .value{font-weight:800; font-size:18px}
+    .progress{height:10px; background:#0b0f22; border-radius:99px; border:1px solid var(--border); overflow:hidden}
+    .progress>div{height:100%; background:linear-gradient(90deg,var(--accent),#8fe3ff)}
+
+    footer{border-top:1px solid var(--border); padding:10px 12px; color:var(--muted); font-size:12px}
+  </style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>언젠간 슈퍼개미가 될꺼야! 🐜</h1>
+    <div class="meta">
+      <div>시작자본: <b>₩100,000,000</b></div>
+      <div>목표: <b>₩10,000,000,000</b></div>
+      <div>턴: <span id="turnLabel">-</span></div>
+    </div>
+  </header>
+
+  <main class="container">
+    <section class="panel">
+      <h2>종목 목록</h2>
+      <div id="tickerList" class="list"></div>
+      <h2>이벤트 로그</h2>
+      <div id="log" class="list"></div>
+    </section>
+
+    <section class="chart-card">
+      <div id="chartTitle" style="font-weight:800">차트: -</div>
+      <canvas id="chart" width="800" height="340"></canvas>
+      <!-- 최근 6개월 표 (현재월이 위로 오도록 역순) -->
+      <div>
+        <table>
+          <thead>
+            <tr><th>월</th><th>가격</th><th>변동</th><th>변동률</th></tr>
+          </thead>
+          <tbody id="priceTableBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="trade-card">
+      <div class="row">
+        <div>
+          <label for="selTicker">종목 선택</label>
+          <select id="selTicker"></select>
+        </div>
+        <div>
+          <label>현재가</label>
+          <div id="curPrice" class="kpi"><div class="label">KRW</div><div class="value">-</div></div>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="qty">수량</label>
+          <input id="qty" type="number" min="1" step="1" value="1" />
+        </div>
+      </div>
+      <div class="row">
+        <button id="btnBuy" class="success btn">매수</button>
+        <button id="btnSell" class="danger btn">매도</button>
+      </div>
+      <button id="btnNext" class="primary btn">다음 달 ▶</button>
+      <button id="btnRestart" class="ghost btn">재시작</button>
+
+      <div class="portfolio">
+        <div class="kpi"><div class="label">현금</div><div id="cash" class="value">-</div></div>
+        <div class="kpi"><div class="label">보유 평가액</div><div id="equity" class="value">-</div></div>
+        <div class="kpi"><div class="label">총자산</div><div id="networth" class="value">-</div></div>
+        <div class="progress"><div id="goalbar" style="width:0%"></div></div>
+        <div class="kpi"><div class="label">투자 수익률</div><div id="roi" class="value">-</div></div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    규칙: 2000-01부터 매월 진행. 매 턴 매수 1회·매도 1회만 가능. 목표 100억 달성 시 승리.
+  </footer>
+</div>
+
+<script>
+// ====== 상수/초기 데이터 ======
+const START_CASH = 100_000_000;
+const GOAL = 10_000_000_000;
+const TICKERS = ['삼성전자','HD현대미포','에코프로','POSCO홀딩스','LG생활건강','키움증권','현대건설','두산에너빌리티','신라젠','삼양식품'];
+const TOTAL_MONTHS = 312; // 2000-01 ~ 2025-12
+const START_Y = 2000, START_M = 1;
+
+let state = { cash: START_CASH, month: 0, positions: {}, selected: TICKERS[0] };
+const prices = {};
+
+// 난수 기반 중립 분포(평균 0%, 편향 없음) — 한 방향 우상향 방지
+function buildSeries(){
+  for(const tk of TICKERS){
+    prices[tk] = [];
+    let p = 10_000 + Math.floor(Math.random()*40_000);
+    let lastRet = 0; // 약한 AR(1)로 군집성 부여
+    for(let i=0;i<TOTAL_MONTHS;i++){
+      const mu = 0.000;             // 평균 0%
+      const sigma = 0.06;           // 월 변동성 6%
+      const ar = 0.25;              // 약한 모멘텀
+      // 박스-뮬러 근사
+      let u=0,v=0; while(u===0) u=Math.random(); while(v===0) v=Math.random();
+      const z = Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);
+      let ret = mu + ar*lastRet + sigma*z;
+      // 드문 급락(시장 이벤트)
+      if(Math.random() < 0.006){
+        ret = -(0.2 + Math.random()*0.2); // -20% ~ -40%
+      }
+      p = Math.max(100, Math.round(p * Math.exp(ret)));
+      prices[tk].push(p);
+      lastRet = ret;
+    }
+  }
+}
+
+function ym(idx){ const y = START_Y + Math.floor((START_M-1+idx)/12); const m = ((START_M-1+idx)%12)+1; return `${y}-${String(m).padStart(2,'0')}`; }
+function getPrice(tk, m){ return prices[tk][m]||0; }
+
+// ====== 렌더링 ======
+function refresh(){
+  document.getElementById('turnLabel').textContent = state.month+1;
+  const list = document.getElementById('tickerList');
+  list.innerHTML='';
+  for(const tk of TICKERS){
+    const now=getPrice(tk,state.month), prev=getPrice(tk,Math.max(0,state.month-1));
+    const up = now>=prev;
+    const div=document.createElement('button');
+    div.className='ticker'+(tk===state.selected?' active':'');
+    div.innerHTML=`<span class='name'>${tk}</span><span class='price' style='color:${up?"var(--up)":"var(--down)"}'>${now.toLocaleString()}</span>`;
+    div.onclick=()=>{state.selected=tk; refresh();};
+    list.appendChild(div);
+  }
+  document.getElementById('selTicker').innerHTML=TICKERS.map(t=>`<option ${t===state.selected?'selected':''}>${t}</option>`).join('');
+  document.querySelector('#curPrice .value').textContent=getPrice(state.selected,state.month).toLocaleString();
+
+  // KPI
+  const eq = Object.entries(state.positions).reduce((s,[tk,n])=>s+n*getPrice(tk,state.month),0);
+  const net = state.cash+eq;
+  document.getElementById('cash').textContent=state.cash.toLocaleString();
+  document.getElementById('equity').textContent=eq.toLocaleString();
+  document.getElementById('networth').textContent=net.toLocaleString();
+  document.getElementById('goalbar').style.width=(net/GOAL*100)+'%';
+  const roi=((net-START_CASH)/START_CASH*100).toFixed(2)+'%';
+  document.getElementById('roi').textContent=roi;
+
+  drawChart();
+  renderTable6m();
+}
+
+function drawChart(){
+  const canvas = document.getElementById('chart');
+  const ctx=canvas.getContext('2d');
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  const tk=state.selected; const arr=prices[tk];
+  document.getElementById('chartTitle').textContent='차트: '+tk;
+  const end=state.month, start=Math.max(0,end-59);
+  const slice=arr.slice(start,end+1);
+  const min=Math.min(...slice), max=Math.max(...slice);
+  const padL=40,padR=10,padT=12,padB=22; const W=canvas.width-padL-padR, H=canvas.height-padT-padB;
+  const x=i=>padL + W*(i/(slice.length-1||1));
+  const y=v=>padT + H - ((v-min)/(max-min||1))*H;
+  // 축
+  ctx.strokeStyle='#233'; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(padL,padT); ctx.lineTo(padL,padT+H); ctx.lineTo(padL+W,padT+H); ctx.stroke();
+  ctx.fillStyle='#6c728a'; ctx.font='12px monospace';
+  ctx.fillText(max.toLocaleString(),6,padT+10); ctx.fillText(min.toLocaleString(),6,padT+H);
+  // 선
+  ctx.lineWidth=2;
+  for(let i=1;i<slice.length;i++){
+    const up=slice[i]>=slice[i-1];
+    ctx.strokeStyle=up?'rgba(46,204,113,.9)':'rgba(255,77,79,.9)';
+    ctx.beginPath(); ctx.moveTo(x(i-1),y(slice[i-1])); ctx.lineTo(x(i),y(slice[i])); ctx.stroke();
+  }
+}
+
+// 최근 6개월 표 (현재월이 맨 위, 역순)
+function renderTable6m(){
+  const body = document.getElementById('priceTableBody');
+  const tk=state.selected; const m=state.month; const start=Math.max(0,m-5);
+  const rows=[];
+  for(let i=m;i>=start;i--){
+    const cur=getPrice(tk,i); const prev=getPrice(tk,Math.max(0,i-1));
+    const chg=cur-prev; const chgPct = prev? ((chg/prev)*100).toFixed(2)+'%':'-';
+    rows.push(`<tr>
+      <td>${ym(i)}</td>
+      <td>${cur.toLocaleString()}</td>
+      <td style="color:${chg>=0?'var(--up)':'var(--down)'}">${(chg>=0?'+':'')+chg.toLocaleString()}</td>
+      <td style="color:${chg>=0?'var(--up)':'var(--down)'}">${chgPct}</td>
+    </tr>`);
+  }
+  body.innerHTML = rows.join('');
+}
+
+// ====== 거래 & 진행 ======
+function getPriceSel(){ return getPrice(state.selected,state.month); }
+function buy(){
+  const qty=Number(document.getElementById('qty').value)||0;
+  if(qty<1) return;
+  const pr=getPriceSel(); const cost=pr*qty;
+  if(cost>state.cash){ alert('현금이 부족합니다.'); return; }
+  state.cash-=cost; state.positions[state.selected]=(state.positions[state.selected]||0)+qty; refresh();
+}
+function sell(){
+  const qty=Number(document.getElementById('qty').value)||0; if(qty<1) return;
+  const have=state.positions[state.selected]||0; if(have<qty){ alert('보유 수량이 부족합니다.'); return; }
+  const pr=getPriceSel(); state.cash+=pr*qty; state.positions[state.selected]=have-qty; refresh();
+}
+function nextMonth(){ state.month = Math.min(TOTAL_MONTHS-1, state.month+1); refresh(); }
+function restart(){ state={cash:START_CASH, month:0, positions:{}, selected:TICKERS[0]}; refresh(); }
+
+// ====== 초기화 ======
+buildSeries();
+refresh();
+
+document.getElementById('btnBuy').onclick=buy;
+document.getElementById('btnSell').onclick=sell;
+document.getElementById('btnNext').onclick=nextMonth;
+document.getElementById('btnRestart').onclick=restart;
+document.getElementById('selTicker').addEventListener('change', e=>{ state.selected=e.target.value; refresh(); });
+
+// ====== 간단 테스트 (콘솔) ======
+(function selfTests(){
+  // 1) 최신 6개월 표 길이 = 6 또는 시작 초기에는 현재 월 + 1
+  const m=state.month; const expectedLen=Math.min(6, m+1);
+  const rows=document.querySelectorAll('#priceTableBody tr').length;
+  console.assert(rows===expectedLen, `표 길이 테스트 실패: ${rows} !== ${expectedLen}`);
+  // 2) 표의 첫 행이 현재 월인지 검사
+  const firstMonth=document.querySelector('#priceTableBody tr td')?.textContent;
+  console.assert(firstMonth===ym(state.month), `표 정렬 테스트 실패: 첫행 ${firstMonth} !== ${ym(state.month)}`);
+})();
+</script>
+</body>
+</html>
