@@ -1,0 +1,626 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>토끼들의 뽑기 샵</title>
+  <style>
+    /* ===== 전체 스타일 (파스텔 톤) ===== */
+    :root{
+      --pastel-bg: #ffeef5; /* 연한 핑크 */
+      --sky: #d9f7ff;       /* 파스텔 하늘 */
+      --card: #fff7fb;      /* 카드 배경 */
+      --ink: #444;          /* 텍스트 */
+      --accent: #ffb3c7;    /* 포인트 */
+      --mint: #c9f7e9;      /* 포인트 2 */
+      --lav: #e7ddff;       /* 포인트 3 */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      background: var(--pastel-bg);
+      font-family: "Pretendard", "Noto Sans KR", system-ui, -apple-system, Segoe UI, Roboto, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+      color:var(--ink);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      padding: 10px;
+    }
+
+    /* ===== 게임 컨테이너 ===== */
+    .wrap{
+      width:min(980px, 100vw - 24px);
+      padding:16px;
+      border-radius:20px;
+      background:linear-gradient(180deg, #ffffffaa, #ffffff55), var(--mint);
+      box-shadow:0 12px 30px rgba(0,0,0,0.12);
+    }
+    h1{
+      margin:0 0 10px;
+      font-size:clamp(20px, 3vw, 28px);
+      display:flex;gap:10px;align-items:center;justify-content:center;
+    }
+    h1 .tag{font-size:0.7em;background:var(--lav);padding:4px 10px;border-radius:999px}
+
+    /* 상단 정보 바 */
+    .hud{
+      display:grid;
+      grid-template-columns: 1fr auto 1fr;
+      align-items:center;
+      gap:10px;
+      margin:8px 0 12px;
+    }
+    .chip{
+      background:var(--card);
+      border:2px solid #fff;
+      padding:8px 12px;
+      border-radius:16px;
+      font-weight:700;
+      display:flex;gap:8px;align-items:center;justify-content:center;
+      box-shadow:0 2px 0 #fff inset, 0 6px 12px rgba(0,0,0,0.06);
+    }
+    .left,.right{display:flex;gap:8px;align-items:center}
+    .right{justify-content:flex-end}
+    .btn{cursor:pointer;border:none;background:var(--accent);color:#fff;font-weight:800;padding:8px 12px;border-radius:12px;box-shadow:0 4px 0 #e99;transition:transform .06s}
+    .btn:active{transform:translateY(2px)}
+    .muted{background:#c7c7c7;color:#333;box-shadow:0 4px 0 #9e9e9e}
+
+    /* 캔버스 카드 */
+    .stage{
+      background: var(--sky);
+      border:6px solid #fff0f5;
+      border-radius:20px;
+      position:relative;
+      overflow:hidden;
+      width:100%;
+      aspect-ratio: 16/9;
+    }
+    canvas{display:block;width:100%;height:100%}
+
+    /* 컨트롤 바 */
+    .controls{
+      display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap;
+      margin-top:10px;
+    }
+    .range{display:flex;gap:8px;align-items:center;background:#fff;padding:6px 10px;border-radius:12px;border:2px solid #fff}
+    input[type="range"]{width:260px}
+    .scale-hint{font-size:12px;opacity:.8}
+
+    /* 시작 오버레이: 토끼 아이콘을 눌러 시작 */
+    .overlay{
+      position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;
+      background:linear-gradient(180deg, rgba(255,255,255,0.8), rgba(255,255,255,0.5));
+      backdrop-filter: blur(2px);
+      gap:14px;text-align:center;padding:20px;
+    }
+    .startBtn{
+      width:140px;height:140px;border-radius:50%;
+      border:6px solid #fff;box-shadow:0 12px 24px rgba(0,0,0,0.15);
+      display:grid;place-items:center;font-size:72px;cursor:pointer;
+      background: radial-gradient(circle at 30% 30%, #fff, #ffe4ec);
+      transition: transform .12s ease, box-shadow .12s ease;
+    }
+    .startBtn:hover{transform:translateY(-2px);box-shadow:0 16px 30px rgba(0,0,0,0.2)}
+    .hint{font-size:14px;opacity:.8}
+
+    /* 결과 오버레이 */
+    .result{
+      position:absolute;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;
+      background:linear-gradient(180deg, rgba(255,255,255,0.9), rgba(255,255,255,0.6));
+      text-align:center;gap:10px;padding:20px;
+    }
+    .result .card{
+      background:#fff;border-radius:16px;padding:16px 18px;box-shadow:0 10px 24px rgba(0,0,0,0.18);
+      min-width: min(520px, 90%);
+    }
+    .result h2{margin:0 0 6px}
+    .result .stat{display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin:10px 0}
+    .result .stat .chip{min-width:120px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>🐰 토끼들의 뽑기 샵 <span class="tag">30초 타임어택</span></h1>
+
+    <div class="hud">
+      <div class="left">
+        <div class="chip" id="scoreChip">점수: <b id="score">0</b></div>
+        <div class="chip">레벨: <b id="level">1</b> / 10</div>
+      </div>
+      <div class="chip" id="timerChip">⏳ 남은시간: <b id="time">30.0</b>s</div>
+      <div class="right">
+        <button class="btn" id="muteBtn" title="배경음악 토글">🔊 BGM</button>
+        <button class="btn" id="restartBtn" title="다시 시작">↻ 재시작</button>
+      </div>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="game" width="960" height="540" aria-label="game"></canvas>
+      <!-- 시작 오버레이: 토끼 아이콘 클릭 시 시작 -->
+      <div class="overlay" id="startOverlay" role="dialog" aria-live="polite">
+        <div class="startBtn" id="startBtn" title="시작하기">🐇</div>
+        <div class="hint">토끼 아이콘을 누르거나 Enter 키를 눌러 시작!<br/>좌/우 방향키로 토끼를 움직여 인형(🥕🐇🥬)을 받아요.</div>
+        <div class="hint">작은 1점 · 중간 5점 · 큰 10점 / 10, 30, 60 … 점에서 레벨업(최대 10)</div>
+      </div>
+      
+      <!-- 결과 오버레이 -->
+      <div class="result" id="resultOverlay">
+        <div class="card">
+          <h2>⌛ 종료! 결과</h2>
+          <div class="stat">
+            <div class="chip">최종 점수: <b id="finalScore">0</b></div>
+            <div class="chip">달성 레벨: <b id="finalLevel">1</b> / 10</div>
+            <div class="chip">총 뽑기 수: <b id="finalCatch">0</b></div>
+          </div>
+          <button class="btn" id="againBtn">다시하기</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="range">
+        <span>내려오는 속도</span>
+        <!-- 어린이도 쉽게: 0.03배까지, 성인 도전: 2.5배까지 -->
+        <input type="range" id="speedControl" min="0.03" max="2.50" step="0.01" value="0.30">
+        <span id="speedLabel">×0.30 (어린이)</span>
+      </div>
+      <div class="scale-hint">◀️ 아주 느림(어린이) ｜ 보통 ×1.0 ｜ 아주 빠름(성인) ▶️</div>
+    </div>
+  </div>
+
+  <script>
+  /* =============================================================
+     토끼들의 뽑기 샵 — HTML5 Canvas 게임 (어린이↔성인 속도조절)
+     반영 사항:
+     - 방향키 조작, 토끼 아이콘(또는 Enter)로 시작
+     - 30초 타이머 & 풍선 팝 시각화
+     - 인형 3종(🥕/🐇/🥬), 확률: 중=작의 1/3, 대=작의 1/5
+     - 점수 1/5/10, 크기 클수록 더 빠르게
+     - 속도 슬라이더: 0.03배(어린이) ~ 2.50배(성인)
+     - 레벨업(10, 30, 60, 100, 150, 210, 280, 360, 450, 550) 최대 10레벨
+     - 파스텔 톤 UI, 간단한 BGM/효과음(토글 가능)
+  ============================================================= */
+
+  // ---------- 캔버스 / 컨텍스트 ----------
+  const canvas = document.getElementById('game');
+  const ctx = canvas.getContext('2d');
+
+  // ---------- DOM 요소 ----------
+  const startOverlay = document.getElementById('startOverlay');
+  const startBtn = document.getElementById('startBtn');
+  const resultOverlay = document.getElementById('resultOverlay');
+  const scoreEl = document.getElementById('score');
+  const levelEl = document.getElementById('level');
+  const timeEl = document.getElementById('time');
+  const restartBtn = document.getElementById('restartBtn');
+  const againBtn = document.getElementById('againBtn');
+  const finalScoreEl = document.getElementById('finalScore');
+  const finalLevelEl = document.getElementById('finalLevel');
+  const finalCatchEl = document.getElementById('finalCatch');
+  const muteBtn = document.getElementById('muteBtn');
+  const speedControl = document.getElementById('speedControl');
+  const speedLabel = document.getElementById('speedLabel');
+
+  // ---------- 게임 상수 ----------
+  const GAME_TIME = 30_000; // 30초 ms
+  const GRAVITY_BASE = 0.02; // 기본 가속 (레벨 보정, 속도슬라이더 적용)
+  const PLAYER_SPEED = 0.6;  // 토끼 좌/우 이동 속도
+  const PLAYER_WIDTH = 70;
+  const PLAYER_HEIGHT = 60;
+
+  // 인형 타입 정의(이모지, 크기, 점수, 기본 속도 배율, 가중치)
+  // 확률: medium = small의 1/3, large = small의 1/5 (작:15, 중:5, 대:3)
+  const TOY_TYPES = [
+    { name:'small', emoji:'🥕', size:34, score:1,  speed:1.00, weight:15 },
+    { name:'medium',emoji:'🐇', size:42, score:5,  speed:1.25, weight:5  },
+    { name:'large', emoji:'🥬', size:54, score:10, speed:1.55, weight:3  },
+  ];
+
+  // 레벨업 누적 점수 임계치(10→20→30… 증가)
+  const LEVEL_THRESHOLDS = [10,30,60,100,150,210,280,360,450,550];
+  const MAX_LEVEL = 10;
+
+  // ---------- 게임 상태 ----------
+  let running = false;
+  let startTime = 0;
+  let elapsed = 0;
+  let score = 0;
+  let level = 1; // 1~10
+  let catchCount = 0;
+  let toys = [];
+  let keys = new Set();
+  let speedFactor = parseFloat(speedControl.value); // 0.03 ~ 2.5
+
+  const player = {
+    x: canvas.width/2,
+    y: canvas.height - PLAYER_HEIGHT - 10,
+    w: PLAYER_WIDTH,
+    h: PLAYER_HEIGHT,
+    vx: 0,
+  };
+
+  // ---------- 유틸 ----------
+  function rand(min,max){ return Math.random()*(max-min)+min; }
+  function choiceWeighted(){
+    const total = TOY_TYPES.reduce((s,t)=>s+t.weight,0);
+    let r = Math.random()*total;
+    for(const t of TOY_TYPES){
+      if(r < t.weight) return t;
+      r-=t.weight;
+    }
+    return TOY_TYPES[0];
+  }
+
+  // 레벨 보정치: 레벨이 오를수록 중력/스폰 속도 약간 증가
+  function levelGravityScale(){ return 1 + (level-1)*0.08; }
+  function levelSpawnInterval(){
+    const base = 680; // ms
+    const min = 260;  // 하한
+    const ms = base - (level-1)*42;
+    return Math.max(min, ms);
+  }
+
+  // ---------- 오디오 (간단한 BGM + 효과음) ----------
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  let actx = null;
+  let bgmNode = null;
+  let bgmGain = null;
+  let sfxGain = null;
+  let muted = false;
+
+  function initAudio(){
+    if(actx) return;
+    actx = new AudioCtx();
+    const master = actx.createGain();
+    master.gain.value = 0.9;
+    master.connect(actx.destination);
+
+    bgmGain = actx.createGain();
+    bgmGain.gain.value = 0.12; // 잔잔하게
+    bgmGain.connect(master);
+
+    sfxGain = actx.createGain();
+    sfxGain.gain.value = 0.35;
+    sfxGain.connect(master);
+  }
+
+  function toggleMute(){
+    muted = !muted;
+    if(!actx) return;
+    const v = muted ? 0 : 1;
+    bgmGain.gain.setTargetAtTime(0.12*v, actx.currentTime, 0.05);
+    sfxGain.gain.setTargetAtTime(0.35*v, actx.currentTime, 0.05);
+    muteBtn.classList.toggle('muted', muted);
+    muteBtn.textContent = muted ? '🔇 BGM' : '🔊 BGM';
+  }
+
+  function playSFX(type='hit'){
+    if(!actx || muted) return;
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.connect(g); g.connect(sfxGain);
+    o.type = (type==='pop')? 'triangle' : (type==='lvl' ? 'sawtooth' : 'sine');
+    const now = actx.currentTime;
+    if(type==='hit'){ o.frequency.setValueAtTime(540, now); o.frequency.exponentialRampToValueAtTime(280, now+0.08); }
+    if(type==='pop'){ o.frequency.setValueAtTime(220, now); o.frequency.exponentialRampToValueAtTime(660, now+0.12); }
+    if(type==='lvl'){
+      const seq=[440,554,659];
+      seq.forEach((f,i)=>{ o.frequency.setValueAtTime(f, now + i*0.07); });
+    }
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.4, now+0.02);
+    g.gain.exponentialRampToValueAtTime(0.0001, now+0.18);
+    o.start(now);
+    o.stop(now+0.2);
+  }
+
+  function startBGM(){
+    if(!actx || muted) return;
+    if(bgmNode) { try{bgmNode.stop();}catch{} }
+    const o = actx.createOscillator();
+    const g = actx.createGain();
+    o.connect(g); g.connect(bgmGain);
+    o.type = 'triangle';
+    let base = 196; // G3
+    const lfo = actx.createOscillator();
+    const lfoGain = actx.createGain();
+    lfo.frequency.value = 0.4; lfoGain.gain.value = 24; // 진동폭
+    lfo.connect(lfoGain); lfoGain.connect(o.frequency);
+    lfo.start();
+    let t = 0;
+    const seq = [base, base*1.26, base, base*1.5];
+    const int = setInterval(()=>{
+      if(!running){ clearInterval(int); try{lfo.stop();}catch{} }
+      t = (t+1)%seq.length;
+      o.frequency.setTargetAtTime(seq[t], actx.currentTime, 0.12);
+    }, 600);
+    o.start();
+    bgmNode = o;
+  }
+
+  // ---------- 오브젝트: 장난감(인형) ----------
+  class Toy{
+    constructor(){
+      const t = choiceWeighted();
+      this.type = t;
+      this.x = rand(20, canvas.width-20);
+      this.y = -t.size;
+      // 기본 초기 낙하속도 (느린 쪽으로 하향 조정)
+      this.vy = rand(0.20, 0.36) * t.speed; // base
+      this.size = t.size;
+      this.dead = false;
+    }
+    update(dt){
+      // 중력 가속(레벨 보정 + 사용자 속도조절 반영)
+      this.vy += (GRAVITY_BASE * levelGravityScale() * speedFactor) * dt;
+      this.y += (this.vy * speedFactor) * dt;
+      // 화면 밖
+      if(this.y - this.size > canvas.height + 40) this.dead = true;
+      // 플레이어 충돌(단순 박스 + 원 혼합 판정)
+      const px = player.x, py = player.y, pw = player.w, ph = player.h;
+      if(this.x > px-10 && this.x < px+pw+10 && this.y+this.size*0.4 > py && this.y-this.size*0.2 < py+ph){
+        this.dead = true;
+        score += this.type.score;
+        catchCount++;
+        playSFX('hit');
+        updateLevelByScore();
+      }
+    }
+    draw(){
+      ctx.font = `${this.size}px system-ui, Apple Color Emoji, Segoe UI Emoji`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.type.emoji, this.x, this.y);
+    }
+  }
+
+  // ---------- 스폰 타이머 ----------
+  let spawnTimer = 0;
+  let spawnIntervalMs = levelSpawnInterval();
+
+  function trySpawn(dt){
+    spawnTimer += dt;
+    if(spawnTimer >= spawnIntervalMs){
+      spawnTimer = 0;
+      const n = (Math.random() < 0.2) ? 2 : 1;
+      for(let i=0;i<n;i++) toys.push(new Toy());
+    }
+  }
+
+  // ---------- 레벨 업 로직 ----------
+  function updateLevelByScore(){
+    let newLevel = 1;
+    for(let i=0;i<LEVEL_THRESHOLDS.length;i++){
+      if(score >= LEVEL_THRESHOLDS[i]) newLevel = i+2; // 10점 도달 시 2레벨 …
+    }
+    newLevel = Math.min(newLevel, MAX_LEVEL);
+    if(newLevel !== level){
+      level = newLevel;
+      levelEl.textContent = level;
+      spawnIntervalMs = levelSpawnInterval();
+      playSFX('lvl');
+      levelFlashTimer = 800; // ms (화면 표시)
+    }
+  }
+
+  // ---------- 입력 ----------
+  window.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter' && !running) { startGame(); }
+    if(['ArrowLeft','ArrowRight'].includes(e.key)) keys.add(e.key);
+  });
+  window.addEventListener('keyup', (e)=>{
+    if(['ArrowLeft','ArrowRight'].includes(e.key)) keys.delete(e.key);
+  });
+
+  // ---------- 게임 루프 ----------
+  let lastTs = 0;
+  let rafId = 0;
+  let levelFlashTimer = 0;
+
+  function loop(ts){
+    rafId = requestAnimationFrame(loop);
+    if(!lastTs) lastTs = ts;
+    const dt = Math.min(32, ts - lastTs); // ms 클램프
+    lastTs = ts;
+
+    // 시간 경과 & 종료 체크
+    elapsed = performance.now() - startTime;
+    const remain = Math.max(0, GAME_TIME - elapsed);
+    timeEl.textContent = (remain/1000).toFixed(1);
+    if(remain <= 0){
+      finishGame();
+      return;
+    }
+
+    // 업데이트
+    update(dt);
+    // 렌더
+    draw(remain);
+  }
+
+  function update(dt){
+    // 입력 → 플레이어 속도
+    let ax = 0;
+    if(keys.has('ArrowLeft')) ax -= 1;
+    if(keys.has('ArrowRight')) ax += 1;
+    player.vx = ax * PLAYER_SPEED * (1 + (level-1)*0.06);
+    player.x += player.vx * dt;
+    player.x = Math.max(8, Math.min(canvas.width - player.w - 8, player.x));
+
+    // 스폰
+    trySpawn(dt);
+
+    // 인형 업데이트
+    for(const t of toys) t.update(dt);
+    toys = toys.filter(t=>!t.dead);
+
+    // HUD 반영
+    scoreEl.textContent = score;
+  }
+
+  function draw(remainMs){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // 하늘 배경의 파스텔 그라디언트
+    const g = ctx.createLinearGradient(0,0,0,canvas.height);
+    g.addColorStop(0, '#e6fbff');
+    g.addColorStop(1, '#fdf1ff');
+    ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
+
+    // 바닥(카펫)
+    ctx.fillStyle = '#fff0f5';
+    ctx.fillRect(0, canvas.height-60, canvas.width, 60);
+
+    // 풍선(타이머 시각화) — 남은 시간에 따라 커짐
+    const t = 1 - (remainMs / GAME_TIME); // 0→1
+    const bx = canvas.width - 90, by = 80;
+    const br = 24 + t*34; // 점점 커짐
+    // 끈
+    ctx.strokeStyle = '#e4a1b7';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(bx, by+br);
+    ctx.lineTo(bx, by+br+28);
+    ctx.stroke();
+    // 본체
+    ctx.fillStyle = '#ffc2d6';
+    ctx.beginPath();
+    ctx.ellipse(bx, by, br*0.9, br, 0, 0, Math.PI*2);
+    ctx.fill();
+    // 하이라이트
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath(); ctx.ellipse(bx-8, by-10, br*0.22, br*0.18, 0, 0, Math.PI*2); ctx.fill();
+
+    // 인형 드로우
+    for(const toy of toys) toy.draw();
+
+    // 플레이어(하얀 토끼)
+    drawBunny(player.x, player.y, player.w, player.h);
+
+    // 레벨업 플래시 텍스트
+    if(levelFlashTimer > 0){
+      levelFlashTimer -= 16;
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, levelFlashTimer/800);
+      ctx.fillStyle = '#6a4c93';
+      ctx.font = 'bold 36px Pretendard, sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='top';
+      ctx.fillText(`Level ${level} !`, canvas.width/2, 20);
+      ctx.restore();
+    }
+  }
+
+  function drawBunny(x,y,w,h){
+    // 간단한 토끼(파스텔 화이트)
+    const cx = x + w/2;
+    // 그림자
+    ctx.fillStyle = 'rgba(0,0,0,0.08)';
+    ctx.beginPath(); ctx.ellipse(cx, y+h+10, w*0.55, 8, 0, 0, Math.PI*2); ctx.fill();
+
+    // 귀
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#f0e9ff';
+    ctx.lineWidth = 2;
+    const earW = w*0.22, earH = h*0.75;
+    // 왼
+    ctx.beginPath(); ctx.ellipse(cx - w*0.18, y + 4, earW, earH, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    // 오
+    ctx.beginPath(); ctx.ellipse(cx + w*0.18, y + 4, earW, earH, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // 얼굴
+    ctx.beginPath(); ctx.ellipse(cx, y + h*0.46, w*0.5, h*0.48, 0, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // 눈
+    ctx.fillStyle = '#444';
+    ctx.beginPath(); ctx.arc(cx - w*0.14, y + h*0.44, 4, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + w*0.14, y + h*0.44, 4, 0, Math.PI*2); ctx.fill();
+
+    // 코/입
+    ctx.strokeStyle = '#444'; ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(cx, y + h*0.50); ctx.lineTo(cx, y + h*0.54);
+    ctx.moveTo(cx - 6, y + h*0.56); ctx.quadraticCurveTo(cx, y + h*0.60, cx + 6, y + h*0.56);
+    ctx.stroke();
+
+    // 볼터치
+    ctx.fillStyle = 'rgba(255, 170, 170, .6)';
+    ctx.beginPath(); ctx.arc(cx - w*0.22, y + h*0.54, 5.5, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(cx + w*0.22, y + h*0.54, 5.5, 0, Math.PI*2); ctx.fill();
+  }
+
+  // ---------- 게임 제어 ----------
+  let spawnIntHandle = null;
+
+  function startGame(){
+    initAudio(); startBGM();
+    running = true;
+    score = 0; level = 1; catchCount = 0; toys = [];
+    levelEl.textContent = level; scoreEl.textContent = score;
+    spawnIntervalMs = levelSpawnInterval();
+
+    startTime = performance.now();
+    lastTs = 0; levelFlashTimer = 0; spawnTimer = 0;
+
+    // UI
+    startOverlay.style.display = 'none';
+    resultOverlay.style.display = 'none';
+
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function finishGame(){
+    running = false;
+    cancelAnimationFrame(rafId);
+    playSFX('pop');
+    finalScoreEl.textContent = score;
+    finalLevelEl.textContent = level;
+    finalCatchEl.textContent = catchCount;
+    resultOverlay.style.display = 'flex';
+  }
+
+  function resetToStart(){
+    running = false;
+    cancelAnimationFrame(rafId);
+    toys = [];
+    score = 0; catchCount = 0; level = 1; elapsed = 0;
+    scoreEl.textContent = '0'; levelEl.textContent = '1'; timeEl.textContent = '30.0';
+    startOverlay.style.display = 'flex';
+    resultOverlay.style.display = 'none';
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+  }
+
+  // ---------- 이벤트 바인딩 ----------
+  startBtn.addEventListener('click', startGame);
+  restartBtn.addEventListener('click', resetToStart);
+  againBtn.addEventListener('click', ()=>{ resetToStart(); startGame(); });
+  muteBtn.addEventListener('click', ()=>{ initAudio(); toggleMute(); });
+  speedControl.addEventListener('input', ()=>{
+    speedFactor = parseFloat(speedControl.value);
+    const label = speedFactor >= 1.8 ? ' (성인)' : (speedFactor <= 0.12 ? ' (어린이)' : '');
+    speedLabel.textContent = `×${speedFactor.toFixed(2)}${label}`;
+  });
+
+  // 초기에 정지 화면 그려두기
+  (function drawIdle(){
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    const g = ctx.createLinearGradient(0,0,0,canvas.height);
+    g.addColorStop(0, '#e6fbff'); g.addColorStop(1, '#fdf1ff');
+    ctx.fillStyle = g; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = '#fff0f5'; ctx.fillRect(0, canvas.height-60, canvas.width, 60);
+
+    const w=90, h=78; drawBunny(canvas.width/2 - w/2, canvas.height-60-h-10, w, h);
+
+    ctx.fillStyle = '#5e548e';
+    ctx.font = '700 28px Pretendard, sans-serif';
+    ctx.textAlign='center'; ctx.fillText('토끼 아이콘을 눌러 시작!', canvas.width/2, 80);
+
+    ctx.font = '40px system-ui, Apple Color Emoji';
+    ctx.fillText('🥕', canvas.width/2 - 120, 150);
+    ctx.fillText('🐇', canvas.width/2, 130);
+    ctx.fillText('🥬', canvas.width/2 + 120, 160);
+  })();
+  </script>
+</body>
+</html>

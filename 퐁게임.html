@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>재미있는 퐁게임</title>
+  <style>
+    /* ====== 전체 레이아웃 & 테마 ====== */
+    :root {
+      --bg: #ffffff;            /* 흰색 배경 */
+      --text: #111;             /* 기본 텍스트 */
+      --neon-cyan: #00e5ff;     /* 네온 포인트 1 */
+      --neon-magenta: #ff00d4;  /* 네온 포인트 2 */
+      --neon-yellow: #ffe600;   /* 네온 포인트 3 */
+      --panel: #f6f7fb;         /* 상단 패널 배경 */
+      --border: #e8ebf3;        /* 보더 라인 */
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Noto Sans KR, Apple SD Gothic Neo, Helvetica, Arial, sans-serif;
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      min-height: 100vh;
+    }
+
+    /* ====== 헤더 ====== */
+    header {
+      text-align: center;
+      padding: 24px 12px 10px;
+    }
+    .title {
+      font-weight: 800;
+      font-size: clamp(28px, 6vw, 48px);
+      letter-spacing: 0.5px;
+      display: inline-block;
+      position: relative;
+    }
+    /* 네온 테두리 효과 */
+    .title::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      filter: blur(12px);
+      z-index: -1;
+      background: radial-gradient(60% 60% at 50% 45%, rgba(0,229,255,0.32), transparent 65%),
+                  radial-gradient(60% 60% at 50% 55%, rgba(255,0,212,0.25), transparent 65%);
+    }
+
+    /* ====== 컨트롤 패널 ====== */
+    .panel {
+      width: min(1060px, 94vw);
+      margin: 0 auto 10px;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 12px;
+      display: grid;
+      grid-template-columns: 1fr auto auto auto auto auto;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .panel .group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .scoreboard {
+      display: flex;
+      gap: 16px;
+      align-items: baseline;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .score {
+      padding: 8px 12px;
+      border-radius: 12px;
+      background: #fff;
+      border: 1px solid var(--border);
+      box-shadow: 0 1px 0 rgba(0,0,0,0.03);
+      font-size: 18px;
+      min-width: 90px;
+      text-align: center;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #fff;
+      border: 1px dashed var(--border);
+      font-size: 13px;
+    }
+
+    select, input[type="number"], .btn {
+      padding: 8px 10px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: #fff;
+      font-size: 14px;
+    }
+
+    .btn {
+      cursor: pointer;
+      transition: transform 0.05s ease, box-shadow 0.2s ease;
+      box-shadow: 0 2px 0 rgba(0,0,0,0.06);
+      user-select: none;
+    }
+
+    .btn:active { transform: translateY(1px); }
+
+    .btn.start { background: #00ffb3; }
+    .btn.pause { background: #ffd24d; }
+    .btn.reset { background: #ff8a8a; }
+
+    .btn.toggle {
+      background: #e8f7ff;
+      border: 1px solid #cdefff;
+    }
+
+    /* ====== 캔버스 래퍼 ====== */
+    .stage-wrap {
+      width: min(1060px, 94vw);
+      margin: 8px auto 18px;
+      position: relative;
+      aspect-ratio: 16/9; /* 반응형 비율 */
+      background: #ffffff; /* 흰 배경 */
+      border: 2px solid var(--border);
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+    }
+
+    canvas { width: 100%; height: 100%; display: block; }
+
+    /* ====== 오버레이(시작/일시정지/게임오버) ====== */
+    .overlay {
+      position: absolute;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(70% 70% at 50% 50%, rgba(255,255,255,0.65), rgba(255,255,255,0.15));
+      backdrop-filter: blur(3px);
+      pointer-events: none;
+    }
+
+    .overlay .card {
+      pointer-events: auto;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 22px;
+      text-align: center;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.08);
+      min-width: min(85%, 520px);
+    }
+    .overlay h2 { margin: 0 0 8px; font-size: clamp(22px, 3.2vw, 32px); }
+    .overlay p { margin: 0 0 14px; }
+
+    .glow {
+      filter: drop-shadow(0 0 10px rgba(0,229,255,0.85)) drop-shadow(0 0 16px rgba(255,0,212,0.45));
+    }
+
+    footer {
+      text-align: center;
+      padding: 10px 12px 18px;
+      color: #666;
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <!-- ====== 제목 ====== -->
+  <header>
+    <div class="title glow">재미있는 퐁게임</div>
+  </header>
+
+  <!-- ====== 상단 패널 (점수/레벨/조작) ====== -->
+  <section class="panel" aria-label="게임 정보 및 조작">
+    <!-- 점수판 -->
+    <div class="group scoreboard" role="status" aria-live="polite">
+      <div class="score" id="scoreL">LEFT 0</div>
+      <div class="score" id="scoreR">RIGHT 0</div>
+      <span class="badge" id="levelBadge">LV 1</span>
+      <span class="badge" id="speedBadge">SPEED 0</span>
+    </div>
+
+    <!-- 모드 선택 -->
+    <div class="group">
+      <label for="mode">모드</label>
+      <select id="mode" title="게임 모드 선택">
+        <option value="pvp">2인 플레이 (P1 vs P2)</option>
+        <option value="ai" selected>싱글 플레이 (AI 대전)</option>
+      </select>
+    </div>
+
+    <!-- 목표 점수 -->
+    <div class="group">
+      <label for="target">목표 점수</label>
+      <input id="target" type="number" min="1" max="30" step="1" value="10" />
+    </div>
+
+    <!-- 사운드 -->
+    <div class="group">
+      <button class="btn toggle" id="soundBtn" aria-pressed="true">🔊 사운드 ON</button>
+    </div>
+
+    <!-- 시작/일시정지/리셋 -->
+    <div class="group">
+      <button class="btn start" id="startBtn">▶ 시작</button>
+      <button class="btn pause" id="pauseBtn">⏸ 일시정지</button>
+      <button class="btn reset" id="resetBtn">⟲ 리셋</button>
+    </div>
+  </section>
+
+  <!-- ====== 게임 스테이지 ====== -->
+  <div class="stage-wrap">
+    <canvas id="stage" width="1060" height="596" aria-label="퐁게임 캔버스" tabindex="0"></canvas>
+
+    <!-- 시작/일시정지/게임오버 오버레이 -->
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <h2 id="overlayTitle">시작하기</h2>
+        <p id="overlayDesc">[▶ 시작] 버튼을 누르거나 캔버스를 클릭하세요.<br>조작: 왼쪽 <b>W/S</b>, 오른쪽 <b>↑/↓</b></p>
+        <div style="display:flex; gap:8px; justify-content:center; flex-wrap:wrap; margin-top:8px;">
+          <button class="btn start" id="ovStart">▶ 시작</button>
+          <button class="btn" id="ovFocus">🎯 포커스(키 입력 허용)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    조작: 왼쪽 플레이어 W/S · 오른쪽 플레이어 ↑/↓ | 공이 골라인에 닿으면 1점 | 먼저 목표 점수에 도달하면 승리 | 라운드가 진행될수록 공 속도 증가
+  </footer>
+
+  <script>
+    // =============================
+    //  퐁게임 (HTML5 Canvas)
+    //  - 조작: 왼쪽 W/S, 오른쪽 ↑/↓
+    //  - 시작 버튼 클릭으로 시작
+    //  - 목표 점수(기본 10점) 선득점 승리
+    //  - 라운드 진행 시 공 속도 증가
+    //  - 일시정지 / 리셋 / 싱글(AI)/2P 모드
+    // =============================
+
+    // ----- 캔버스 & 컨텍스트 -----
+    const canvas = document.getElementById('stage');
+    const ctx = canvas.getContext('2d');
+
+    // 반응형: CSS는 크기만 조절, 실제 로직은 내부 해상도(1060x596) 기준으로 동작
+
+    // ----- UI 요소 -----
+    const scoreL = document.getElementById('scoreL');
+    const scoreR = document.getElementById('scoreR');
+    const levelBadge = document.getElementById('levelBadge');
+    const speedBadge = document.getElementById('speedBadge');
+    const targetInput = document.getElementById('target');
+    const modeSelect = document.getElementById('mode');
+    const startBtn = document.getElementById('startBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const soundBtn = document.getElementById('soundBtn');
+
+    const overlay = document.getElementById('overlay');
+    const ovStart = document.getElementById('ovStart');
+    const ovFocus = document.getElementById('ovFocus');
+    const overlayTitle = document.getElementById('overlayTitle');
+    const overlayDesc = document.getElementById('overlayDesc');
+
+    // ----- 게임 상태 -----
+    const STATE = {
+      Idle: 'idle',
+      Playing: 'playing',
+      Paused: 'paused',
+      Over: 'over',
+    };
+
+    let state = STATE.Idle;
+
+    // ----- 기본 설정 -----
+    const PADDLE_W = 16;      // 패들 너비
+    const PADDLE_H = 100;     // 패들 높이(기본)
+    const PADDLE_SPEED = 8;   // 패들 이동 속도
+
+    const BALL_SIZE = 14;     // 공 크기
+    const BALL_SPEED_BASE = 6;// 기본 공 속도
+
+    const WALL_THICK = 12;    // 상/하 경계 두께
+
+    // 네온 그라데이션 색상
+    const C_CYAN = '#00e5ff';
+    const C_MAG = '#ff00d4';
+    const C_YEL = '#ffe600';
+
+    // 점수
+    let scoreLeft = 0;
+    let scoreRight = 0;
+
+    // 라운드/레벨: 총 득점 수에 따라 증가
+    let level = 1; // 화면 표기용 레벨
+
+    // 사운드 ON/OFF
+    let soundOn = true;
+
+    // 싱글/2P 모드
+    let singleMode = true; // true면 오른쪽이 AI
+
+    // 공, 패들, 키 입력 상태
+    const leftPaddle = { x: 40, y: canvas.height/2 - PADDLE_H/2, w: PADDLE_W, h: PADDLE_H };
+    const rightPaddle = { x: canvas.width - 40 - PADDLE_W, y: canvas.height/2 - PADDLE_H/2, w: PADDLE_W, h: PADDLE_H };
+
+    const ball = { x: canvas.width/2, y: canvas.height/2, vx: 0, vy: 0, size: BALL_SIZE, speed: BALL_SPEED_BASE };
+
+    const keys = { w: false, s: false, up: false, down: false };
+
+    // AI 파라미터
+    let aiMaxSpeed = 6;      // AI 패들이 한 프레임에 이동 가능한 최대 속도
+    let aiLag = 0.12;        // 공 추적 보정 (낮을수록 예측 정확)
+
+    // 애니메이션 핸들
+    let rafId = null;
+
+    // =============================
+    // 오디오 (간단 효과음 - 웹오디오)
+    // =============================
+    let audioCtx = null;
+    function ensureAudio() {
+      if (!audioCtx) {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        audioCtx = new AudioContext();
+      }
+    }
+
+    function beep(freq = 440, duration = 0.06, type = 'sine', gain = 0.03) {
+      if (!soundOn) return;
+      ensureAudio();
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = type;
+      osc.frequency.setValueAtTime(freq, t);
+      g.gain.value = gain;
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start(t);
+      osc.stop(t + duration);
+    }
+
+    const sfx = {
+      paddle: () => beep(880, 0.05, 'square', 0.03),
+      wall:   () => beep(520, 0.04, 'sine',   0.025),
+      score:  () => beep(330, 0.12, 'sawtooth', 0.035),
+      start:  () => beep(660, 0.10, 'triangle', 0.035),
+      win:    () => { beep(880,0.10,'triangle',0.035); setTimeout(()=>beep(1180,0.14,'triangle',0.04), 100); },
+    };
+
+    // =============================
+    // 초기화 & 리셋
+    // =============================
+    function resetGame(soft=false) {
+      // soft=true면 점수/레벨 유지하고 라운드만 재개
+      if (!soft) {
+        scoreLeft = 0; scoreRight = 0; level = 1;
+      }
+      updateHUD();
+      // 패들/공 위치 초기화
+      leftPaddle.y = canvas.height/2 - leftPaddle.h/2;
+      rightPaddle.y = canvas.height/2 - rightPaddle.h/2;
+      placeBall((Math.random() < 0.5) ? -1 : 1);
+      state = STATE.Idle;
+      showOverlay('시작하기', '【▶ 시작】을 누르거나 캔버스를 클릭하면 시작합니다.\n조작: 왼쪽 W/S · 오른쪽 ↑/↓');
+      stopLoop();
+    }
+
+    function placeBall(dir=1) {
+      ball.x = canvas.width/2; ball.y = canvas.height/2;
+      // 레벨에 따른 기본 속도 가중치
+      const base = BALL_SPEED_BASE + (level-1) * 0.6;
+      const angle = (Math.random()*0.6 - 0.3); // 약간 상/하 편차
+      ball.vx = (base) * dir; // 좌/우 방향 고정
+      ball.vy = base * angle;
+      ball.speed = Math.hypot(ball.vx, ball.vy);
+    }
+
+    // =============================
+    // 렌더링
+    // =============================
+    function draw() {
+      // 캔버스 클리어 (흰색 배경)
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      // 상/하 경계(네온 라인)
+      ctx.save();
+      ctx.shadowColor = C_CYAN;
+      ctx.shadowBlur = 12;
+      ctx.fillStyle = C_CYAN;
+      ctx.fillRect(0, 0, canvas.width, WALL_THICK);
+      ctx.shadowColor = C_MAG;
+      ctx.fillRect(0, canvas.height - WALL_THICK, canvas.width, WALL_THICK);
+      ctx.restore();
+
+      // 중앙 네트(점선)
+      ctx.setLineDash([12, 16]);
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#ddd';
+      ctx.beginPath();
+      ctx.moveTo(canvas.width/2, WALL_THICK);
+      ctx.lineTo(canvas.width/2, canvas.height - WALL_THICK);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 패들 (네온 글로우)
+      drawNeonRect(leftPaddle.x, leftPaddle.y, leftPaddle.w, leftPaddle.h, C_CYAN);
+      drawNeonRect(rightPaddle.x, rightPaddle.y, rightPaddle.w, rightPaddle.h, C_MAG);
+
+      // 공 (네온 노랑)
+      drawNeonBall(ball.x, ball.y, ball.size, C_YEL);
+    }
+
+    function drawNeonRect(x, y, w, h, color) {
+      ctx.save();
+      ctx.shadowColor = color; ctx.shadowBlur = 18; ctx.fillStyle = color;
+      ctx.fillRect(x, y, w, h);
+      ctx.restore();
+    }
+
+    function drawNeonBall(x, y, r, color) {
+      ctx.save();
+      ctx.shadowColor = color; ctx.shadowBlur = 16;
+      ctx.fillStyle = color;
+      ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.fill();
+      ctx.restore();
+    }
+
+    // =============================
+    // 업데이트 (물리/입력/AI)
+    // =============================
+    function update() {
+      // 플레이어 입력 처리 (왼쪽 WS / 오른쪽 ↑↓)
+      if (keys.w) leftPaddle.y -= PADDLE_SPEED;
+      if (keys.s) leftPaddle.y += PADDLE_SPEED;
+      if (!singleMode) { // 2P 모드에서만 키로 제어
+        if (keys.up) rightPaddle.y -= PADDLE_SPEED;
+        if (keys.down) rightPaddle.y += PADDLE_SPEED;
+      }
+
+      // 경계 제한
+      leftPaddle.y = clamp(leftPaddle.y, WALL_THICK, canvas.height - WALL_THICK - leftPaddle.h);
+      rightPaddle.y = clamp(rightPaddle.y, WALL_THICK, canvas.height - WALL_THICK - rightPaddle.h);
+
+      // 싱글 모드면 오른쪽 패들 AI 이동
+      if (singleMode) {
+        const targetY = ball.y - rightPaddle.h/2; // 공 중심 추적
+        const diff = targetY - rightPaddle.y;
+        rightPaddle.y += clamp(diff * aiLag, -aiMaxSpeed, aiMaxSpeed);
+      }
+
+      // 공 이동
+      ball.x += ball.vx; ball.y += ball.vy;
+
+      // 상/하 벽 반사
+      if (ball.y - ball.size <= WALL_THICK) {
+        ball.y = WALL_THICK + ball.size; ball.vy *= -1; sfx.wall();
+      }
+      if (ball.y + ball.size >= canvas.height - WALL_THICK) {
+        ball.y = canvas.height - WALL_THICK - ball.size; ball.vy *= -1; sfx.wall();
+      }
+
+      // 패들과 충돌 체크 (좌)
+      if (ball.x - ball.size <= leftPaddle.x + leftPaddle.w &&
+          ball.y >= leftPaddle.y && ball.y <= leftPaddle.y + leftPaddle.h &&
+          ball.vx < 0) {
+        collideWithPaddle(leftPaddle, +1);
+      }
+
+      // 패들과 충돌 체크 (우)
+      if (ball.x + ball.size >= rightPaddle.x &&
+          ball.y >= rightPaddle.y && ball.y <= rightPaddle.y + rightPaddle.h &&
+          ball.vx > 0) {
+        collideWithPaddle(rightPaddle, -1);
+      }
+
+      // 좌/우 골라인 처리 (득점)
+      if (ball.x + ball.size < 0) {
+        // 오른쪽 득점
+        scoreRight++;
+        afterScore(+1);
+      } else if (ball.x - ball.size > canvas.width) {
+        // 왼쪽 득점
+        scoreLeft++;
+        afterScore(-1);
+      }
+    }
+
+    function collideWithPaddle(p, dir) {
+      // 패들과 충돌 시 반사 각도는 맞은 위치에 따라 변화
+      const hitPos = (ball.y - (p.y + p.h/2)) / (p.h/2); // -1 ~ 1
+      // 기본 속도는 레벨에 따라 점진 증가, rally에 따라 소폭 가산
+      const speed = Math.min(18, Math.hypot(ball.vx, ball.vy) * 1.04 + (level * 0.15));
+      const angle = hitPos * (Math.PI/3.2); // 최대 ~56도
+      ball.vx = Math.cos(angle) * speed * dir;
+      ball.vy = Math.sin(angle) * speed;
+      ball.x = p.x + (dir>0 ? p.w + ball.size : -ball.size); // 끼임 방지 보정
+      sfx.paddle();
+    }
+
+    function afterScore(lastDir) {
+      sfx.score();
+      // 총 득점 수에 비례하여 레벨 증가
+      const total = scoreLeft + scoreRight;
+      level = Math.max(1, 1 + Math.floor(total / 1)); // 매 득점마다 1씩 증가 (체감 쉬움)
+
+      // AI 난이도도 미세 상승
+      aiMaxSpeed = 6 + (level * 0.25); // 점차 추적 속도 증가
+      aiLag = Math.max(0.08, 0.12 - level * 0.003); // 미세하게 예측 향상
+
+      // 목표 점수 달성 시 게임 종료
+      const target = clamp(parseInt(targetInput.value || '10', 10), 1, 30);
+      if (scoreLeft >= target || scoreRight >= target) {
+        state = STATE.Over;
+        updateHUD();
+        stopLoop();
+        overlay.style.display = 'grid';
+        const winner = (scoreLeft >= target) ? 'LEFT' : 'RIGHT';
+        overlayTitle.textContent = `게임 종료 - ${winner} 승리!`;
+        overlayDesc.innerHTML = '【⟲ 리셋】으로 새 게임을 시작하세요.';
+        sfx.win();
+        return;
+      }
+
+      // 다음 라운드로 공 리스폰 (마지막 득점자의 반대 방향으로 발사)
+      updateHUD();
+      placeBall(-lastDir);
+    }
+
+    function updateHUD() {
+      scoreL.textContent = `LEFT ${scoreLeft}`;
+      scoreR.textContent = `RIGHT ${scoreRight}`;
+      levelBadge.textContent = `LV ${level}`;
+      speedBadge.textContent = `SPEED ${Math.round(Math.hypot(ball.vx, ball.vy))}`;
+    }
+
+    // =============================
+    // 유틸
+    // =============================
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+    // =============================
+    // 메인 루프
+    // =============================
+    function loop() {
+      update();
+      draw();
+      rafId = requestAnimationFrame(loop);
+    }
+
+    function startLoop() {
+      if (rafId == null) rafId = requestAnimationFrame(loop);
+    }
+
+    function stopLoop() {
+      if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+    }
+
+    function showOverlay(title, desc) {
+      overlay.style.display = 'grid';
+      overlayTitle.textContent = title;
+      overlayDesc.innerHTML = desc.replace(/\n/g, '<br>');
+    }
+    function hideOverlay() { overlay.style.display = 'none'; }
+
+    // =============================
+    // 입력 처리 (키보드)
+    // =============================
+    window.addEventListener('keydown', (e) => {
+      switch (e.key) {
+        case 'w': case 'W': keys.w = true; break;
+        case 's': case 'S': keys.s = true; break;
+        case 'ArrowUp': keys.up = true; break;
+        case 'ArrowDown': keys.down = true; break;
+        case ' ': // 스페이스: 일시정지 토글 (플레이 중일 때)
+          if (state === STATE.Playing) togglePause();
+          e.preventDefault();
+          break;
+      }
+    });
+    window.addEventListener('keyup', (e) => {
+      switch (e.key) {
+        case 'w': case 'W': keys.w = false; break;
+        case 's': case 'S': keys.s = false; break;
+        case 'ArrowUp': keys.up = false; break;
+        case 'ArrowDown': keys.down = false; break;
+      }
+    });
+
+    // 캔버스 포커스용
+    ovFocus.addEventListener('click', () => { canvas.focus(); });
+
+    // =============================
+    // 버튼 이벤트
+    // =============================
+    startBtn.addEventListener('click', startGame);
+    ovStart.addEventListener('click', startGame);
+
+    pauseBtn.addEventListener('click', () => {
+      if (state === STATE.Playing) togglePause();
+    });
+
+    resetBtn.addEventListener('click', () => {
+      resetGame(false);
+    });
+
+    soundBtn.addEventListener('click', () => {
+      soundOn = !soundOn;
+      soundBtn.textContent = soundOn ? '🔊 사운드 ON' : '🔈 사운드 OFF';
+      soundBtn.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
+    });
+
+    modeSelect.addEventListener('change', () => {
+      singleMode = modeSelect.value === 'ai';
+      // 모드 변경 시 라운드만 재시작 (점수 유지)
+      placeBall((Math.random()<0.5)?-1:1);
+      canvas.focus();
+    });
+
+    targetInput.addEventListener('change', () => {
+      // 목표 점수는 1~30 사이로 제한
+      const v = clamp(parseInt(targetInput.value || '10', 10), 1, 30);
+      targetInput.value = v;
+    });
+
+    // 캔버스 클릭으로도 시작/일시정지 처리
+    canvas.addEventListener('click', () => {
+      if (state === STATE.Idle) startGame();
+      else if (state === STATE.Playing) togglePause();
+    });
+
+    // =============================
+    // 게임 상태 전환
+    // =============================
+    function startGame() {
+      if (state === STATE.Playing) return;
+      overlay.style.display = 'none';
+      // 오디오 초기화 (사용자 제스처 이후 가능)
+      ensureAudio(); sfx.start();
+
+      // 새 라운드 배치 (초기 시작 시)
+      if (state === STATE.Idle) {
+        // 점수판이 모두 0이고 레벨 1이면 완전 초기로 간주
+        if (scoreLeft === 0 && scoreRight === 0) {
+          placeBall((Math.random()<0.5)?-1:1);
+        }
+      }
+      state = STATE.Playing;
+      startLoop();
+      canvas.focus();
+    }
+
+    function togglePause() {
+      if (state !== STATE.Playing) return;
+      state = STATE.Paused;
+      stopLoop();
+      showOverlay('일시 정지', '스페이스바 또는 【▶ 시작】으로 재개');
+    }
+
+    // 오버레이에서 재개를 위해 startGame 재사용
+    overlay.addEventListener('click', (e) => {
+      if (state === STATE.Paused && (e.target === overlay || e.target === ovStart)) {
+        overlay.style.display = 'none';
+        state = STATE.Playing;
+        startLoop();
+        canvas.focus();
+      }
+    });
+
+    // 첫 화면 준비
+    resetGame(false);
+  </script>
+</body>
+</html>
