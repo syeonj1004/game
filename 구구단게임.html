@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>구구단 게임</title>
+  <style>
+    body {
+      font-family: 'Comic Sans MS', sans-serif;
+      text-align: center;
+      margin-top: 50px;
+      font-size: 22px; /* 전체 기본 글씨 크기 키움 */
+    }
+    #game {
+      display: none;
+    }
+    .question {
+      font-size: 36px; /* 문제 글씨 크게 */
+      margin-bottom: 20px;
+    }
+    .inputBox {
+      font-size: 28px; /* 입력창 글씨 크게 */
+      padding: 10px;
+    }
+    .annoying-icon {
+      display: none;
+      font-size: 70px; /* 아이콘 크기 키움 */
+      color: red;
+      margin-top: 20px;
+    }
+    #score {
+      font-size: 28px; /* 점수 표시 크게 */
+      margin-top: 15px;
+    }
+    #startBtn, #pauseBtn, #restartBtn {
+      padding: 12px 24px;
+      font-size: 22px; /* 버튼 글씨 크게 */
+      margin-top: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1 style="font-size:40px;">구구단 게임</h1>
+  <button id="startBtn">게임 시작</button>
+  <button id="pauseBtn" style="display:none;">일시정지</button>
+  <button id="restartBtn" style="display:none;">다시 시작</button>
+
+  <div id="game">
+    <div class="question" id="question"></div>
+    <input type="number" id="answer" class="inputBox" placeholder="정답 입력">
+    <div id="score">점수: 0</div>
+    <div class="annoying-icon" id="icon">😝</div>
+  </div>
+
+  <script>
+    let score = 0;
+    let correctAnswer = 0;
+    let interval;
+    let isPaused = false;
+
+    function startGame() {
+      document.getElementById("startBtn").style.display = "none";
+      document.getElementById("pauseBtn").style.display = "inline-block";
+      document.getElementById("restartBtn").style.display = "none";
+      document.getElementById("game").style.display = "block";
+      score = 0;
+      document.getElementById("score").innerText = "점수: 0";
+      document.getElementById("icon").style.display = "none";
+      nextQuestion();
+      // 한 문제당 시간 8초로 변경
+      startTimer(8000);
+    }
+
+    function restartGame() {
+      clearInterval(interval);
+      startGame();
+    }
+
+    function startTimer(speed) {
+      if (interval) clearInterval(interval);
+      interval = setInterval(() => {
+        if (!isPaused) nextQuestion();
+      }, speed);
+    }
+
+    function nextQuestion() {
+      let num1 = Math.floor(Math.random() * 12) + 1;
+      let num2 = Math.floor(Math.random() * 12) + 1;
+      correctAnswer = num1 * num2;
+      document.getElementById("question").innerText = `${num1} × ${num2} = ?`;
+      document.getElementById("answer").value = "";
+      document.getElementById("answer").focus();
+    }
+
+    function checkAnswer() {
+      let userAnswer = parseInt(document.getElementById("answer").value);
+      if (userAnswer === correctAnswer) {
+        score += 10;
+        document.getElementById("score").innerText = "점수: " + score;
+        document.getElementById("icon").style.display = "none";
+        nextQuestion();
+      } else {
+        gameOver();
+      }
+    }
+
+    function gameOver() {
+      clearInterval(interval);
+      document.getElementById("question").innerText = "게임 오버!";
+      document.getElementById("icon").style.display = "block";
+      document.getElementById("pauseBtn").style.display = "none";
+      document.getElementById("restartBtn").style.display = "inline-block";
+    }
+
+    function togglePause() {
+      isPaused = !isPaused;
+      document.getElementById("pauseBtn").innerText = isPaused ? "다시시작" : "일시정지";
+    }
+
+    document.getElementById("startBtn").addEventListener("click", startGame);
+    document.getElementById("pauseBtn").addEventListener("click", togglePause);
+    document.getElementById("restartBtn").addEventListener("click", restartGame);
+
+    // ENTER 키 입력 시 정답 확인
+    document.getElementById("answer").addEventListener("keydown", function(event) {
+      if (event.key === "Enter") {
+        checkAnswer();
+      }
+    });
+  </script>
+</body>
+</html>
