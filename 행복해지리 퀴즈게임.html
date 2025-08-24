@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>행복해지리 퀴즈게임</title>
+  <style>
+    body {
+      text-align: center;
+      font-family: 'Comic Sans MS', sans-serif;
+      background: #e0f7fa;
+    }
+    h1 {
+      font-size: 2.5em;
+      color: #00695c;
+    }
+    #quiz, #scoreBoard, #recordBoard {
+      margin-top: 20px;
+    }
+    .optionBtn {
+      display: block;
+      margin: 10px auto;
+      padding: 10px 20px;
+      background: #000;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.2em;
+      cursor: pointer;
+    }
+    #timer {
+      font-size: 1.5em;
+      color: red;
+    }
+    #progressBarContainer {
+      width: 80%;
+      height: 20px;
+      background: #ccc;
+      margin: 10px auto;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+    #progressBar {
+      height: 100%;
+      width: 100%;
+      background: #4caf50;
+      transition: none;
+    }
+    .shake {
+      animation: shake 0.5s;
+    }
+    @keyframes shake {
+      0% { transform: translate(0px, 0px); }
+      25% { transform: translate(-5px, 0px); }
+      50% { transform: translate(5px, 0px); }
+      75% { transform: translate(-5px, 0px); }
+      100% { transform: translate(0px, 0px); }
+    }
+    #recordList {
+      list-style: none;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>행복해지리리 퀴즈게임</h1>
+  
+  <div id="mainMenu">
+    <h2>문제 세트를 선택하세요</h2>
+    <button onclick="startQuiz('A')">세트 A</button>
+    <div id="recordBoard">
+      <h3>점수 기록</h3>
+      <ul id="recordList"></ul>
+    </div>
+  </div>
+  <div id="quiz" style="display:none;">
+    <div id="question"></div>
+    <div id="options"></div>
+    <div id="timer">남은 시간: 10</div>
+    <div id="progressBarContainer">
+      <div id="progressBar"></div>
+    </div>
+  </div>
+  <div id="scoreBoard" style="display:none;">
+    <h2>퀴즈 종료!</h2>
+    <p id="finalScore"></p>
+    <input type="text" id="playerName" placeholder="이름을 입력하세요">
+    <button onclick="saveRecord()">점수 기록</button>
+    <button onclick="goMain()">메인으로</button>
+  </div>
+
+  <audio id="clickSound" src="https://actions.google.com/sounds/v1/cartoon/wood_plank_flicks.ogg"></audio>
+  <audio id="warnSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg"></audio>
+
+  <script>
+    const quizSetA = [
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["구리","가평","춘천"], answer:2},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["남양주","천안","고양"], answer:1},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["아산","수원","과천"], answer:0},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["강릉","용인","평택"], answer:0},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["부산","오산","성남"], answer:0},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["부천","청주","의정부"], answer:1},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["경주","안양","포천"], answer:0},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["하남","대구","연천"], answer:1},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["전주","수원","안산"], answer:0},
+      {q:"다음 중 경기도에 위치한 도시가 아닌 곳을 고르세요", options:["대전","용인","여주"], answer:0}
+    ];
+
+    let currentSet = [];
+    let currentQuestion = 0;
+    let score = 0;
+    let timer;
+    let timeLeft = 10;
+    const maxTime = 10;
+    let records = [];
+
+    function startQuiz(set){
+      if(set==="A") currentSet = quizSetA;
+      currentQuestion = 0;
+      score = 0;
+      document.getElementById("mainMenu").style.display = "none";
+      document.getElementById("scoreBoard").style.display = "none";
+      document.getElementById("quiz").style.display = "block";
+      showQuestion();
+    }
+
+    function showQuestion(){
+      if(currentQuestion >= currentSet.length){
+        endQuiz();
+        return;
+      }
+      const qObj = currentSet[currentQuestion];
+      document.getElementById("question").innerText = `${currentQuestion+1}. ${qObj.q}`;
+      let optionsHtml = "";
+      qObj.options.forEach((opt, i)=>{
+        optionsHtml += `<button class='optionBtn' onclick='checkAnswer(${i})'>${i+1}. ${opt}</button>`;
+      });
+      document.getElementById("options").innerHTML = optionsHtml;
+      timeLeft = maxTime;
+      document.getElementById("timer").innerText = "남은 시간: "+timeLeft;
+      updateProgressBar();
+      clearInterval(timer);
+      timer = setInterval(countDown,1000);
+    }
+
+    function countDown(){
+      timeLeft--;
+      document.getElementById("timer").innerText = "남은 시간: "+timeLeft;
+      document.getElementById("warnSound").play();
+      updateProgressBar();
+      if(timeLeft <=0){
+        document.body.classList.add("shake");
+        setTimeout(()=> document.body.classList.remove("shake"), 500);
+        clearInterval(timer);
+        currentQuestion++;
+        showQuestion();
+      }
+    }
+
+    function updateProgressBar(){
+      const percent = (timeLeft/maxTime)*100;
+      const bar = document.getElementById("progressBar");
+      bar.style.width = percent+"%";
+      if(timeLeft > 5){
+        bar.style.background = "#4caf50"; // 초록
+      } else if(timeLeft > 3){
+        bar.style.background = "#ffeb3b"; // 노랑
+      } else {
+        bar.style.background = "#f44336"; // 빨강
+      }
+    }
+
+    function checkAnswer(i){
+      document.getElementById("clickSound").play();
+      if(i === currentSet[currentQuestion].answer){
+        score++;
+      }
+      clearInterval(timer);
+      currentQuestion++;
+      showQuestion();
+    }
+
+    function endQuiz(){
+      document.getElementById("quiz").style.display = "none";
+      document.getElementById("scoreBoard").style.display = "block";
+      document.getElementById("finalScore").innerText = "당신의 점수: "+score+" / "+currentSet.length;
+    }
+
+    function saveRecord(){
+      const name = document.getElementById("playerName").value.trim();
+      if(name === "") return;
+      records.push({name: name, score: score});
+      // 점수 높은 순으로 정렬
+      records.sort((a,b) => b.score - a.score);
+      updateRecordBoard();
+      goMain();
+    }
+
+    function updateRecordBoard(){
+      const list = document.getElementById("recordList");
+      list.innerHTML = "";
+      records.forEach(r => {
+        const li = document.createElement("li");
+        li.textContent = `${r.name}: ${r.score}점`;
+        list.appendChild(li);
+      });
+    }
+
+    function goMain(){
+      document.getElementById("mainMenu").style.display = "block";
+      document.getElementById("scoreBoard").style.display = "none";
+    }
+  </script>
+</body>
+</html>
