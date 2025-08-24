@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>냥코대전쟁 v20</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background-color: #a8e6a1;
+      text-align: center;
+    }
+    #gameArea {
+      position: relative;
+      width: 100%;
+      height: 500px;
+      background: linear-gradient(to top, #c7f9cc, #fef9ef);
+      overflow: hidden;
+      border: 2px solid #333;
+      margin: 20px auto;
+    }
+    .castle {
+      position: absolute;
+      bottom: 0;
+      width: 160px;
+      height: 260px;
+      border: 5px solid #222;
+      border-radius: 12px;
+      color: white;
+      font-weight: bold;
+      text-align: center;
+      padding-top: 40px;
+      box-shadow: 0 0 20px rgba(0,0,0,0.7);
+    }
+    #playerCastle { left: 0; background: linear-gradient(135deg, #ff9966, #ff5e62, #ffa07a); }
+    #enemyCastle { right: 0; background: linear-gradient(135deg, #5dade2, #154360, #2e86c1); }
+    .castle::before {
+      content: "";
+      position: absolute;
+      top: -60px;
+      left: 30px;
+      width: 100px;
+      height: 60px;
+      background: repeating-linear-gradient(45deg, #444, #777 10px);
+      border: 3px solid #222;
+      border-bottom: none;
+      clip-path: polygon(0% 100%, 50% 0%, 100% 100%);
+    }
+    .door { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); width: 50px; height: 80px; background: #663300; border: 3px solid #222; border-radius: 6px 6px 0 0; }
+    .flag { position: absolute; top: -80px; left: 50%; transform: translateX(-50%); width: 10px; height: 60px; background: #222; }
+    .flag::after { content: ""; position: absolute; left: 10px; top: 0; width: 40px; height: 25px; background: red; border: 2px solid #222; }
+
+    .unit {
+      position: absolute;
+      bottom: 0;
+      width: 50px;
+      height: 50px;
+      text-align: center;
+      line-height: 50px;
+      font-size: 28px;
+      transition: transform 0.2s ease;
+    }
+    .cat { color: black; }
+    .tankcat { color: darkblue; font-size: 36px; text-shadow: 2px 2px 4px #000; }
+    .dog { color: brown; }
+    .snake { color: green; }
+
+    #controls { margin-top: 20px; }
+    button { padding: 10px 20px; font-size: 16px; margin: 5px; }
+    #status { margin-top: 10px; font-size: 18px; }
+
+    /* HP 바 */
+    .hp-bar {
+      position: relative;
+      width: 120px;
+      height: 20px;
+      background: #444;
+      border: 2px solid #222;
+      margin: 5px auto;
+    }
+    .hp-fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      background: limegreen;
+      width: 100%;
+    }
+
+    /* 화면 */
+    #victoryScreen, #defeatScreen, #startScreen, #nextStageScreen {
+      display: none;
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      justify-content: center;
+      align-items: center;
+      font-weight: bold;
+      text-shadow: 3px 3px 6px #000;
+      flex-direction: column;
+    }
+    #victoryScreen { font-size: 80px; background: linear-gradient(135deg, red, orange, yellow, green, blue, indigo, violet); color: white; }
+    #defeatScreen { font-size: 80px; background: #555; color: white; }
+    #nextStageScreen { background: white; color: black; font-size: 50px; }
+    #startScreen { background: #333; color: #fff; font-size: 22px; padding: 20px; }
+    #startScreen h2 { font-size: 40px; margin-bottom: 15px; }
+    #startScreen button { margin-top: 20px; font-size: 24px; padding: 10px 20px; }
+  </style>
+</head>
+<body>
+  <h1>🐱 냥코대전쟁 v20 🐶🐍</h1>
+  <div id="gameArea">
+    <div id="playerCastle" class="castle">우리 성<br>
+      성의 남은 체력: <span id="playerHP">100</span>
+      <div class="hp-bar"><div id="playerHPBar" class="hp-fill"></div></div>
+      <div class="door"></div><div class="flag"></div>
+    </div>
+    <div id="enemyCastle" class="castle">적 성<br>
+      성의 남은 체력: <span id="enemyHP">100</span>
+      <div class="hp-bar"><div id="enemyHPBar" class="hp-fill"></div></div>
+      <div class="door"></div><div class="flag"></div>
+    </div>
+    <div id="victoryScreen">승리!</div>
+    <div id="defeatScreen">패배...</div>
+    <div id="nextStageScreen">1단계 클리어!<br>2단계는 미완성..</div>
+    <div id="startScreen">
+      <h2>냥코대전쟁</h2>
+      <p>🎮 규칙 🎮</p>
+      <ul style="text-align:left; max-width:400px; margin:auto; font-size:16px;">
+        <li>적 성의 체력을 0으로 만들면 승리</li>
+        <li>우리 성의 체력이 0이 되면 패배</li>
+        <li>돈으로 고양이를 소환해 싸우세요</li>
+      </ul>
+      <button onclick="startGame()">게임 시작</button>
+    </div>
+  </div>
+
+  <div id="controls">
+    <button onclick="summonCat()">일반 고양이 소환 (2원)</button>
+    <button onclick="summonTankCat()">탱크 고양이 소환 (5원)</button>
+    <button onclick="restartGame()">재시작</button>
+    <p>💰 돈: <span id="gold">0</span></p>
+  </div>
+
+  <script>
+    let gold = 0;
+    let playerHP = 100;
+    let enemyHP = 100;
+    let maxHP = 100;
+    let cats = [];
+    let dogs = [];
+    let snakes = [];
+    let gameInterval;
+    let gameStarted = false;
+
+    document.getElementById("startScreen").style.display = "flex";
+
+    function startGame() {
+      document.getElementById("startScreen").style.display = "none";
+      gameStarted = true;
+      gameInterval = setInterval(gameLoop, 200);
+      setInterval(() => { if(gameStarted) { gold += 3; document.getElementById("gold").textContent = gold; } }, 2000);
+      setInterval(() => { if(gameStarted) summonDog(); }, 5000);
+      setInterval(() => { if(gameStarted) summonSnake(); }, 10000);
+    }
+
+    function summonCat() {
+      if (!gameStarted) return;
+      if (gold >= 2) {
+        gold -= 2;
+        document.getElementById("gold").textContent = gold;
+        let cat = { hp: 10, attack: 1, x: 100, el: createUnit("🐱", "cat", 100), fighting: false };
+        cats.push(cat);
+      }
+    }
+    function summonTankCat() {
+      if (!gameStarted) return;
+      if (gold >= 5) {
+        gold -= 5;
+        document.getElementById("gold").textContent = gold;
+        let tankcat = { hp: 20, attack: 0.5, x: 100, el: createUnit("🛡️", "tankcat", 100), fighting: false };
+        cats.push(tankcat);
+      }
+    }
+    function summonDog() {
+      let dog = { hp: 5, attack: 2, x: document.getElementById("gameArea").offsetWidth - 180, el: createUnit("🐶", "dog", document.getElementById("gameArea").offsetWidth - 180), fighting: false };
+      dogs.push(dog);
+    }
+    function summonSnake() {
+      let snake = { hp: 8, attack: 2.2, x: document.getElementById("gameArea").offsetWidth - 180, el: createUnit("🐍", "snake", document.getElementById("gameArea").offsetWidth - 180), fighting: false };
+      snakes.push(snake);
+    }
+    function createUnit(icon, cls, x) {
+      let unit = document.createElement("div");
+      unit.className = "unit " + cls;
+      unit.style.left = x + "px";
+      unit.innerHTML = icon;
+      document.getElementById("gameArea").appendChild(unit);
+      return unit;
+    }
+
+    function updateHP() {
+      document.getElementById("playerHP").textContent = Math.max(0, Math.floor(playerHP));
+      document.getElementById("enemyHP").textContent = Math.max(0, Math.floor(enemyHP));
+      document.getElementById("playerHPBar").style.width = (playerHP/maxHP*100) + "%";
+      document.getElementById("enemyHPBar").style.width = (enemyHP/maxHP*100) + "%";
+    }
+
+    function gameLoop() {
+      cats.forEach((cat, ci) => {
+        if (!cat.fighting) cat.x += 10;
+        cat.el.style.left = cat.x + "px";
+        dogs.forEach((dog, di) => {
+          if (Math.abs(cat.x - dog.x) < 20) {
+            cat.fighting = true; dog.fighting = true;
+            dog.hp -= cat.attack; cat.hp -= dog.attack;
+            if (dog.hp <= 0) { dog.el.remove(); dogs.splice(di, 1); cat.fighting = false; }
+            if (cat.hp <= 0) { cat.el.remove(); cats.splice(ci, 1); }
+          }
+        });
+        snakes.forEach((snake, si) => {
+          if (Math.abs(cat.x - snake.x) < 20) {
+            cat.fighting = true; snake.fighting = true;
+            snake.hp -= cat.attack; cat.hp -= snake.attack;
+            if (snake.hp <= 0) { snake.el.remove(); snakes.splice(si, 1); cat.fighting = false; }
+            if (cat.hp <= 0) { cat.el.remove(); cats.splice(ci, 1); }
+          }
+        });
+        if (!cat.fighting && cat.x > document.getElementById("gameArea").offsetWidth - 160) {
+          enemyHP -= cat.attack;
+          updateHP();
+          if (enemyHP <= 0) endGame(true);
+        }
+      });
+      dogs.forEach((dog, di) => {
+        if (!dog.fighting) dog.x -= 10;
+        dog.el.style.left = dog.x + "px";
+        if (!dog.fighting && dog.x < 160) {
+          playerHP -= dog.attack;
+          updateHP();
+          if (playerHP <= 0) endGame(false);
+        }
+      });
+      snakes.forEach((snake, si) => {
+        if (!snake.fighting) snake.x -= 10;
+        snake.el.style.left = snake.x + "px";
+        if (!snake.fighting && snake.x < 160) {
+          playerHP -= snake.attack;
+          updateHP();
+          if (playerHP <= 0) endGame(false);
+        }
+      });
+    }
+
+    function endGame(isWin) {
+      clearInterval(gameInterval);
+      gameStarted = false;
+      cats.concat(dogs).concat(snakes).forEach(u => { if(u.el) u.el.remove(); });
+      cats = []; dogs = []; snakes = [];
+      if (isWin) {
+        document.getElementById("victoryScreen").style.display = "flex";
+        setTimeout(() => {
+          document.getElementById("victoryScreen").style.display = "none";
+          document.getElementById("nextStageScreen").style.display = "flex";
+        }, 2000);
+      } else {
+        document.getElementById("defeatScreen").style.display = "flex";
+      }
+    }
+
+    function restartGame() { location.reload(); }
+
+    updateHP();
+  </script>
+</body>
+</html>
