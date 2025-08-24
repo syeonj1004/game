@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>삼국지 액션 RPG</title>
+  <style>
+    body {
+      background-color: #222;
+      color: white;
+      text-align: center;
+      margin: 0;
+    }
+    canvas {
+      background: #555;
+      display: block;
+      margin: 20px auto;
+      border: 3px solid white;
+      position: relative;
+    }
+    #ui {
+      margin: 10px;
+    }
+    #characterSelect {
+      display: flex;
+      justify-content: center;
+      margin: 20px;
+      gap: 20px;
+    }
+    .charBtn {
+      background: black;
+      color: white;
+      border: 2px solid white;
+      padding: 10px 20px;
+      cursor: pointer;
+    }
+    #bossBarContainer {
+      width: 800px;
+      height: 25px;
+      background: #333;
+      border: 2px solid white;
+      margin: 0 auto;
+      display: none;
+    }
+    #bossBar {
+      height: 100%;
+      background: crimson;
+      width: 0%;
+      transition: width 1s ease-in-out;
+    }
+  </style>
+</head>
+<body>
+  <h1>⚔ 삼국지 액션 RPG ⚔</h1>
+
+  <div id="characterSelect">
+    <button class="charBtn" data-char="관우">관우 (청룡언월도)</button>
+    <button class="charBtn" data-char="장비">장비 (장팔사모)</button>
+    <button class="charBtn" data-char="황충">황충 (활)</button>
+    <button class="charBtn" data-char="조자룡">조자룡 (검)</button>
+  </div>
+
+  <div id="ui" style="display:none;">
+    <span id="hp">HP: 100</span> | 
+    <span id="score">점수: 0</span> | 
+    <span id="stage">스테이지: 1</span>
+  </div>
+
+  <div id="bossBarContainer"><div id="bossBar"></div></div>
+  <canvas id="gameCanvas" width="800" height="500" style="display:none;"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    let keys = {};
+    let score = 0;
+    let stage = 1;
+    let gameOver = false;
+    let gameStarted = false;
+    let bossFight = false;
+    let boss = null;
+
+    let player = { x:400,y:400,w:40,h:60,speed:4,hp:100,attackCount:0,ultReady:false,character:null };
+
+    let enemies = [];
+    let attacks = [];
+    let enemyAttacks = [];
+    let bossAttacks = [];
+    let items = [];
+    let enemySpawnRate = 2000;
+    let lastAttack = 0;
+
+    document.addEventListener("keydown", e => keys[e.key] = true);
+    document.addEventListener("keyup", e => keys[e.key] = false);
+
+    document.querySelectorAll(".charBtn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        chooseCharacter(btn.getAttribute("data-char"));
+      });
+    });
+
+    function chooseCharacter(name){
+      player.character = name;
+      document.getElementById("characterSelect").style.display = "none";
+      document.getElementById("gameCanvas").style.display = "block";
+      document.getElementById("ui").style.display = "block";
+      gameStarted = true;
+      gameLoop();
+      setInterval(()=>{ if(!bossFight) spawnEnemy(); }, enemySpawnRate);
+    }
+
+    function shakeScreen(){
+      let i=0;
+      const interval = setInterval(()=>{
+        canvas.style.left = (i%2===0?10:-10)+"px";
+        i++;
+        if(i>5){
+          clearInterval(interval);
+          canvas.style.left = "0px";
+        }
+      },100);
+    }
+
+    function spawnEnemy(){
+      let typeRand = Math.random();
+      let type = typeRand < 0.4 ? "병사" : typeRand < 0.7 ? "궁수" : "기병";
+      let enemy = { 
+        type:type,
+        x:Math.random()*(canvas.width-40), y:0, 
+        w:40,h:60, 
+        hp:type==="기병"?50:30,
+        speed:type==="기병"?2:1.2+stage*0.05,
+        attackCooldown:0
+      };
+      enemies.push(enemy);
+    }
+
+    function spawnBoss(){
+      if(stage % 10 === 0){
+        boss = { name:"동탁", type:"dongtak", x:canvas.width/2-70, y:80, w:140,h:160, hp:800, maxHp:800, speed:1.2, attackCooldown:0, enraged:false };
+        alert("동탁: 하하하! 감히 동탁을 상대하려 하다니!");
+      } else if(stage % 5 === 0){
+        boss = { name:"여포", type:"yeopo", x:canvas.width/2-60, y:70, w:120,h:150, hp:600, maxHp:600, speed:2, attackCooldown:0, enraged:false };
+        alert("여포: 여포다! 감히 나를 막으려 하느냐!");
+      }
+      bossFight = true;
+      document.getElementById("bossBarContainer").style.display = "block";
+      document.getElementById("bossBar").style.width = "100%";
+      shakeScreen();
+    }
+
+    function attack(){
+      if(player.character==="황충"){
+        attacks.push({type:"arrow",x:player.x+player.w/2-3,y:player.y,w:6,h:20,speed:7,damage:10});
+      } else if(player.character==="관우"){
+        attacks.push({type:"swing",x:player.x-40,y:player.y-20,w:120,h:80,duration:15,damage:25});
+      } else if(player.character==="장비"){
+        attacks.push({type:"thrust",x:player.x+player.w/2-5,y:player.y-80,w:10,h:90,duration:20,damage:30});
+      } else if(player.character==="조자룡"){
+        attacks.push({type:"slash",x:player.x+player.w,y:player.y,w:60,h:20,duration:10,damage:20});
+      }
+    }
+
+    function drawBoss(b){
+      if(b.type==="yeopo"){
+        ctx.fillStyle="gray";
+        ctx.fillRect(b.x,b.y,b.w,b.h);
+        ctx.fillStyle="peachpuff";
+        ctx.beginPath();
+        ctx.arc(b.x+b.w/2,b.y-20,20,0,Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle="red"; ctx.lineWidth=6;
+        ctx.beginPath(); ctx.moveTo(b.x+b.w/2-20,b.y-30); ctx.lineTo(b.x+b.w/2+20,b.y-30); ctx.stroke();
+      }
+      if(b.type==="dongtak"){
+        ctx.fillStyle="brown";
+        ctx.fillRect(b.x,b.y,b.w,b.h);
+        ctx.fillStyle="peachpuff";
+        ctx.beginPath();
+        ctx.arc(b.x+b.w/2,b.y-25,25,0,Math.PI*2);
+        ctx.fill();
+        ctx.strokeStyle="black"; ctx.lineWidth=3;
+        ctx.beginPath(); ctx.moveTo(b.x+b.w/2-10,b.y-20); ctx.lineTo(b.x+b.w/2-20,b.y-40); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(b.x+b.w/2+10,b.y-20); ctx.lineTo(b.x+b.w/2+20,b.y-40); ctx.stroke();
+      }
+    }
+
+    function bossDefeatedDialog(b){
+      if(b.type==="yeopo"){
+        alert("여포: 이 여포가… 무너지다니…");
+      }
+      if(b.type==="dongtak"){
+        alert("동탁: 으윽… 이 동탁이 패하다니…");
+      }
+      shakeScreen();
+    }
+
+    function isColliding(a,b){
+      return a.x < b.x+b.w && a.x+a.w > b.x && a.y < b.y+b.h && a.y+a.h > b.y;
+    }
+
+    function gameLoop(){
+      if(gameOver || !gameStarted) return;
+      ctx.clearRect(0,0,canvas.width,canvas.height);
+
+      if(keys["ArrowLeft"]||keys["a"]) player.x -= player.speed;
+      if(keys["ArrowRight"]||keys["d"]) player.x += player.speed;
+      if(keys["ArrowUp"]||keys["w"]) player.y -= player.speed;
+      if(keys["ArrowDown"]||keys["s"]) player.y += player.speed;
+
+      if(keys[" "]){
+        if(Date.now()-lastAttack>400){ attack(); lastAttack=Date.now(); }
+      }
+
+      drawCharacter(player);
+
+      // 공격 처리
+      ctx.fillStyle="yellow";
+      attacks.forEach((atk,i)=>{
+        if(atk.type==="arrow") atk.y -= atk.speed;
+        ctx.fillRect(atk.x,atk.y,atk.w,atk.h);
+        if(atk.duration){ atk.duration--; if(atk.duration<=0) attacks.splice(i,1);}
+        if(atk.y<0) attacks.splice(i,1);
+      });
+
+      // 아이템 처리
+      items.forEach((item,i)=>{
+        ctx.fillStyle=item.type==="apple"?"orange":"blue";
+        ctx.fillRect(item.x,item.y,item.w,item.h);
+        if(isColliding(player,item)){
+          if(item.type==="apple") player.hp=Math.min(100,player.hp+20);
+          if(item.type==="potion") player.hp=Math.min(100,player.hp+50);
+          items.splice(i,1);
+        }
+      });
+
+      // 적 처리
+      ctx.fillStyle="red";
+      enemies.forEach((enemy,i)=>{
+        let dx = player.x - enemy.x;
+        let dy = player.y - enemy.y;
+        let dist = Math.sqrt(dx*dx+dy*dy);
+        enemy.x += (dx/dist)*enemy.speed;
+        enemy.y += (dy/dist)*enemy.speed;
+
+        ctx.fillRect(enemy.x,enemy.y,enemy.w,enemy.h);
+        if(isColliding(player,enemy)){
+          player.hp -= 5;
+          enemies.splice(i,1);
+          if(player.hp<=0){ gameOver=true; alert("게임 오버!"); }
+        }
+        // 공격에 맞아 적이 죽었는지 체크
+        attacks.forEach((atk,j)=>{
+          if(isColliding(atk,enemy)){
+            enemy.hp -= atk.damage;
+            attacks.splice(j,1);
+            if(enemy.hp<=0){
+              // 아이템 드랍 확률
+              if(Math.random()<0.3){
+                items.push({type:"apple",x:enemy.x,y:enemy.y,w:15,h:15});
+              } else if(Math.random()<0.1){
+                items.push({type:"potion",x:enemy.x,y:enemy.y,w:15,h:15});
+              }
+              enemies.splice(i,1);
+              score+=10;
+            }
+          }
+        });
+      });
+
+      // 보스 처리
+      if(bossFight && boss){
+        drawBoss(boss);
+        let barWidth=(boss.hp/boss.maxHp)*100;
+        document.getElementById("bossBar").style.width=barWidth+"%";
+        if(isColliding(player,boss)){
+          player.hp -= 15;
+          if(player.hp<=0){ gameOver=true; alert("게임 오버!"); }
+        }
+        attacks.forEach((atk,i)=>{
+          if(isColliding(atk,boss)){
+            boss.hp -= atk.damage;
+            attacks.splice(i,1);
+            if(boss.hp<=0){
+              bossDefeatedDialog(boss);
+              bossFight=false; boss=null;
+              document.getElementById("bossBarContainer").style.display="none";
+              player.hp=Math.min(100,player.hp+30);
+              score+=200;
+              stage++;
+              if(stage%5===0) spawnBoss();
+            }
+          }
+        });
+      }
+
+      document.getElementById("hp").innerText = "HP: "+player.hp;
+      document.getElementById("score").innerText = "점수: "+score;
+      document.getElementById("stage").innerText = "스테이지: "+stage;
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    function drawCharacter(p){
+      ctx.fillStyle = "green";
+      ctx.fillRect(p.x, p.y, p.w, p.h);
+      ctx.fillStyle = "peachpuff";
+      ctx.beginPath();
+      ctx.arc(p.x+p.w/2, p.y-15, 15, 0, Math.PI*2);
+      ctx.fill();
+    }
+  </script>
+</body>
+</html>
