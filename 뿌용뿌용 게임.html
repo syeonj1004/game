@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>뿌용뿌용 게임</title>
+  <style>
+    body {
+      background: #000;
+      color: #fff;
+      text-align: center;
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; /* 고딕체 적용 */
+    }
+    #gameCanvas {
+      background: #222;
+      display: block;
+      margin: 20px auto;
+      border: 2px solid #fff;
+    }
+    #controls button {
+      font-size: 1rem;
+      padding: 10px 20px;
+      margin: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <h1>뿌용뿌용 게임</h1>
+  <canvas id="gameCanvas" width="300" height="600"></canvas>
+  <div id="controls">
+    <button onclick="startGame()">게임 시작</button>
+    <button onclick="pauseGame()">일시 정지</button>
+    <button onclick="resetGame()">재시작</button>
+  </div>
+  <h2 id="score">점수: 0</h2>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const rows = 20;
+    const cols = 10;
+    const blockSize = 30;
+    let board = Array.from({ length: rows }, () => Array(cols).fill(null));
+    const colors = ["red", "yellow", "green", "blue", "purple"];
+
+    let score = 0;
+    let gameInterval;
+    let currentPuyo;
+
+    class Puyo {
+      constructor() {
+        this.x = 4;
+        this.y = 0;
+        this.blocks = [];
+        for (let i = 0; i < 3; i++) {
+          this.blocks.push({
+            x: this.x,
+            y: this.y - i,
+            color: colors[Math.floor(Math.random() * colors.length)]
+          });
+        }
+        this.rotationState = 0;
+      }
+      draw() {
+        for (let b of this.blocks) {
+          ctx.fillStyle = b.color;
+          ctx.fillRect(b.x * blockSize, b.y * blockSize, blockSize, blockSize);
+          ctx.strokeStyle = "#000";
+          ctx.strokeRect(b.x * blockSize, b.y * blockSize, blockSize, blockSize);
+        }
+      }
+      rotate() {
+        let baseX = this.blocks[0].x;
+        let baseY = this.blocks[0].y;
+        this.rotationState = (this.rotationState + 1) % 4;
+        if (this.rotationState === 0) {
+          for (let i = 0; i < 3; i++) {
+            this.blocks[i].x = baseX;
+            this.blocks[i].y = baseY - i;
+          }
+        } else if (this.rotationState === 1) {
+          for (let i = 0; i < 3; i++) {
+            this.blocks[i].x = baseX + i;
+            this.blocks[i].y = baseY;
+          }
+        } else if (this.rotationState === 2) {
+          for (let i = 0; i < 3; i++) {
+            this.blocks[i].x = baseX;
+            this.blocks[i].y = baseY + i;
+          }
+        } else if (this.rotationState === 3) {
+          for (let i = 0; i < 3; i++) {
+            this.blocks[i].x = baseX - i;
+            this.blocks[i].y = baseY;
+          }
+        }
+      }
+      dropToBottom() {
+        let canMove = true;
+        while (canMove) {
+          for (let b of this.blocks) b.y++;
+          if (collision()) {
+            for (let b of this.blocks) b.y--;
+            canMove = false;
+          }
+        }
+      }
+    }
+
+    function drawBackground() {
+      ctx.save();
+      ctx.globalAlpha = 0.3; // 투명도 30%
+      ctx.fillStyle = "#ff66cc"; // 분홍색 슬라임
+      ctx.beginPath();
+      ctx.arc(150, 300, 80, 0, Math.PI * 2); // 몸통 (크기 2배, 가운데 위치)
+      ctx.fill();
+      ctx.strokeStyle = "#000";
+      ctx.stroke();
+
+      // 눈
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.arc(130, 280, 16, 0, Math.PI * 2);
+      ctx.arc(170, 280, 16, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.arc(130, 280, 8, 0, Math.PI * 2);
+      ctx.arc(170, 280, 8, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 입
+      ctx.beginPath();
+      ctx.arc(150, 320, 20, 0, Math.PI);
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawBoard() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawBackground(); // 배경에 슬라임 그리기
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (board[r][c]) {
+            ctx.fillStyle = board[r][c];
+            ctx.fillRect(c * blockSize, r * blockSize, blockSize, blockSize);
+            ctx.strokeStyle = "#000";
+            ctx.strokeRect(c * blockSize, r * blockSize, blockSize, blockSize);
+          }
+        }
+      }
+      if (currentPuyo) currentPuyo.draw();
+    }
+
+    function dropPuyo() {
+      if (!currentPuyo) {
+        currentPuyo = new Puyo();
+        return;
+      }
+      for (let b of currentPuyo.blocks) b.y++;
+      if (collision()) {
+        for (let b of currentPuyo.blocks) b.y--;
+        for (let b of currentPuyo.blocks) {
+          if (b.y >= 0) board[b.y][b.x] = b.color;
+        }
+        resolveMatches();
+        currentPuyo = null;
+      }
+      applyGravity();
+    }
+
+    function collision() {
+      for (let b of currentPuyo.blocks) {
+        if (b.y >= rows) return true;
+        if (b.y >= 0 && board[b.y] && board[b.y][b.x]) return true;
+      }
+      return false;
+    }
+
+    async function resolveMatches() {
+      let chain = 0;
+      let cleared;
+      do {
+        cleared = checkMatches(chain);
+        if (cleared) {
+          chain++;
+          drawBoard();
+          await new Promise(r => setTimeout(r, 500));
+          applyGravity();
+        }
+      } while (cleared);
+    }
+
+    function checkMatches(chain) {
+      let clearedAny = false;
+      let visited = Array.from({ length: rows }, () => Array(cols).fill(false));
+
+      function dfs(r, c, color, cluster) {
+        if (r < 0 || r >= rows || c < 0 || c >= cols) return;
+        if (visited[r][c]) return;
+        if (board[r][c] !== color) return;
+        visited[r][c] = true;
+        cluster.push([r, c]);
+        dfs(r+1, c, color, cluster);
+        dfs(r-1, c, color, cluster);
+        dfs(r, c+1, color, cluster);
+        dfs(r, c-1, color, cluster);
+      }
+
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          if (board[r][c] && !visited[r][c]) {
+            let cluster = [];
+            dfs(r, c, board[r][c], cluster);
+            if (cluster.length >= 3) {
+              clearedAny = true;
+              for (let [rr, cc] of cluster) board[rr][cc] = null;
+              if (chain > 0) score += 20 * cluster.length; else score += 10 * cluster.length;
+            }
+          }
+        }
+      }
+
+      if (clearedAny) {
+        document.getElementById("score").textContent = `점수: ${score}`;
+      }
+      return clearedAny;
+    }
+
+    function applyGravity() {
+      for (let c = 0; c < cols; c++) {
+        let emptyRow = rows - 1;
+        for (let r = rows - 1; r >= 0; r--) {
+          if (board[r][c]) {
+            if (r !== emptyRow) {
+              board[emptyRow][c] = board[r][c];
+              board[r][c] = null;
+            }
+            emptyRow--;
+          }
+        }
+      }
+    }
+
+    function gameLoop() {
+      dropPuyo();
+      drawBoard();
+    }
+
+    function startGame() {
+      if (gameInterval) clearInterval(gameInterval);
+      gameInterval = setInterval(gameLoop, 500);
+    }
+
+    function pauseGame() {
+      clearInterval(gameInterval);
+    }
+
+    function resetGame() {
+      board = Array.from({ length: rows }, () => Array(cols).fill(null));
+      score = 0;
+      document.getElementById("score").textContent = "점수: 0";
+      currentPuyo = null;
+      startGame();
+    }
+
+    document.addEventListener("keydown", (e) => {
+      if (!currentPuyo) return;
+      if (e.key === "ArrowLeft") {
+        if (currentPuyo.blocks.every(b => b.x > 0 && !board[b.y]?.[b.x - 1])) {
+          for (let b of currentPuyo.blocks) b.x--;
+        }
+      }
+      if (e.key === "ArrowRight") {
+        if (currentPuyo.blocks.every(b => b.x < cols - 1 && !board[b.y]?.[b.x + 1])) {
+          for (let b of currentPuyo.blocks) b.x++;
+        }
+      }
+      if (e.key === "ArrowUp") {
+        currentPuyo.rotate();
+      }
+      if (e.code === "Space") {
+        currentPuyo.dropToBottom();
+      }
+      drawBoard();
+    });
+  </script>
+</body>
+</html>

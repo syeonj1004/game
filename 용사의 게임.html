@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>전설의 모험</title>
+  <style>
+    body {
+      margin: 0;
+      background: linear-gradient(to bottom, #001f3f, #0074D9, #7FDBFF);
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      background: rgba(0,0,0,0.4);
+      display: block;
+      margin: 20px auto;
+      border: 3px solid #fff;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(255,255,255,0.6);
+    }
+    #info {
+      font-family: monospace;
+      margin-top: 10px;
+      background: rgba(0,0,0,0.5);
+      padding: 5px 15px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <h1>전설의 모험</h1>
+  <canvas id="gameCanvas" width="500" height="400"></canvas>
+  <div id="info">레벨: 1 | 점수: 0 | 체력: 3</div>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    // 주인공
+    const player = { x: 220, y: 330, w: 60, h: 60, speed: 5, hp: 3, dx:0, dy:0, emoji: "🧍", canAttack: false, hasLightSword: false };
+
+    // 적과 아이템
+    let monsters = [];
+    let dragonOrbs = []; // 용 주변에 생성되는 구슬
+    let swords = [];
+    let powerItems = [];
+    let healItems = [];
+    let lightSwords = [];
+    let bosses = [];
+
+    // 게임 상태
+    let score = 0;
+    let level = 1;
+    let gameOver = false;
+
+    // 키 입력
+    document.addEventListener("keydown", e => {
+      if (e.key === "ArrowLeft") player.dx = -player.speed;
+      if (e.key === "ArrowRight") player.dx = player.speed;
+      if (e.key === "ArrowUp") player.dy = -player.speed;
+      if (e.key === "ArrowDown") player.dy = player.speed;
+    });
+
+    document.addEventListener("keyup", e => {
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") player.dx = 0;
+      if (e.key === "ArrowUp" || e.key === "ArrowDown") player.dy = 0;
+    });
+
+    // 적 생성
+    function spawnMonster(strong = false) {
+      if (strong) {
+        let dragon = { x: Math.random()*400, y: -100, w: 100, h: 100, hp: level*5, emoji: "🐉", isDragon: true };
+        monsters.push(dragon);
+        let orbInterval = setInterval(() => {
+          if (monsters.includes(dragon) && !gameOver) {
+            dragonOrbs.push({ parent: dragon, angle: 0, radius: 40, emoji: "🔵" });
+          } else {
+            clearInterval(orbInterval);
+          }
+        }, 2000);
+      } else {
+        monsters.push({ x: Math.random()*460, y: -30, w: 40, h: 40, hp: level, emoji: "👾", isDragon: false });
+      }
+    }
+
+    // 보스 생성 (레벨5마다)
+    function spawnBoss() {
+      let boss = { x: 150, y: -150, w: 200, h: 200, hp: level*20, emoji: "👹", isBoss: true };
+      bosses.push(boss);
+      alert("👹 거대한 보스 등장! 준비하세요!");
+    }
+
+    // 아이템 생성
+    function spawnSword() { swords.push({ x: Math.random()*460, y: -30, w: 20, h: 20, emoji: "⚔️" }); }
+    function spawnPowerItem() { powerItems.push({ x: Math.random()*460, y: -30, w: 25, h: 25, emoji: "⚡" }); }
+    function spawnHealItem() { healItems.push({ x: Math.random()*460, y: -30, w: 25, h: 25, emoji: "❤️" }); }
+    function spawnLightSword() { lightSwords.push({ x: Math.random()*460, y: -30, w: 30, h: 30, emoji: "🔆" }); }
+
+    // 충돌 확인
+    function isColliding(a, b) {
+      return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    // 레벨 자동 증가
+    setInterval(() => {
+      if (!gameOver) {
+        level++;
+        alert("30초 경과! 다음 레벨로 진입! 현재 레벨: "+level);
+        if (level % 5 === 0) {
+          spawnBoss();
+        }
+      }
+    }, 30000);
+
+    // 20초마다 강한 적 생성
+    setInterval(() => {
+      if (!gameOver) {
+        spawnMonster(true);
+        alert("강력한 용이 나타났다! 조심하세요!");
+      }
+    }, 20000);
+
+    // 게임 루프
+    function gameLoop() {
+      if (gameOver) return;
+
+      ctx.clearRect(0,0,500,400);
+
+      // 주인공 이동
+      player.x += player.dx;
+      player.y += player.dy;
+      if (player.x < 0) player.x = 0;
+      if (player.x > 440) player.x = 440;
+      if (player.y < 0) player.y = 0;
+      if (player.y > 340) player.y = 340;
+
+      // 주인공 그리기
+      ctx.font = "50px Arial";
+      ctx.fillText(player.emoji, player.x, player.y + player.h);
+
+      // 보스 이동 및 충돌
+      ctx.font = "80px Arial";
+      for (let i=bosses.length-1; i>=0; i--) {
+        let b = bosses[i];
+        b.y += 1;
+        ctx.fillText(b.emoji, b.x, b.y + b.h);
+        if (isColliding(player, b)) {
+          if (player.hasLightSword || player.canAttack) {
+            bosses.splice(i,1);
+            score += 1000;
+            alert("보스를 물리쳤다!");
+          } else {
+            player.hp -= 3;
+            if (player.hp <= 0) {
+              gameOver = true;
+              alert("게임 오버! 점수: "+score);
+            }
+          }
+        } else if (b.y > 400) {
+          bosses.splice(i,1);
+        }
+      }
+
+      // 몬스터 이동 및 충돌
+      ctx.font = "50px Arial";
+      for (let i=monsters.length-1; i>=0; i--) {
+        let m = monsters[i];
+        m.y += 1.5;
+        ctx.fillText(m.emoji, m.x, m.y + m.h);
+        if (isColliding(player, m)) {
+          if (player.hasLightSword || player.canAttack) {
+            monsters.splice(i,1);
+            score += player.hasLightSword ? 500 : 200;
+          } else {
+            player.hp -= 1;
+            monsters.splice(i,1);
+            if (player.hp <= 0) {
+              gameOver = true;
+              alert("게임 오버! 점수: "+score);
+            }
+          }
+        } else if (m.y > 400) {
+          monsters.splice(i,1);
+        }
+      }
+
+      // 용옥 이동 및 충돌
+      ctx.font = "20px Arial";
+      for (let i=dragonOrbs.length-1; i>=0; i--) {
+        let orb = dragonOrbs[i];
+        if (!monsters.includes(orb.parent)) {
+          dragonOrbs.splice(i,1);
+          continue;
+        }
+        orb.angle += 0.1;
+        orb.x = orb.parent.x + orb.parent.w/2 + Math.cos(orb.angle) * orb.radius;
+        orb.y = orb.parent.y + orb.parent.h/2 + Math.sin(orb.angle) * orb.radius;
+        ctx.fillText(orb.emoji, orb.x, orb.y);
+        if (isColliding(player, {x:orb.x, y:orb.y, w:20, h:20})) {
+          if (!player.hasLightSword && !player.canAttack) {
+            player.hp -= 1;
+            dragonOrbs.splice(i,1);
+            if (player.hp <= 0) {
+              gameOver = true;
+              alert("게임 오버! 점수: "+score);
+            }
+          } else {
+            dragonOrbs.splice(i,1);
+            score += 300;
+          }
+        }
+      }
+
+      // 검 아이템 충돌
+      ctx.font = "24px Arial";
+      for (let i=swords.length-1; i>=0; i--) {
+        let s = swords[i];
+        s.y += 2;
+        ctx.fillText(s.emoji, s.x, s.y + s.h);
+        if (isColliding(player, s)) {
+          score += 100;
+          swords.splice(i,1);
+          if (score % 500 === 0) {
+            level++;
+            alert("레벨 업! 현재 레벨: "+level);
+            if (level % 5 === 0) spawnBoss();
+          }
+        } else if (s.y > 400) {
+          swords.splice(i,1);
+        }
+      }
+
+      // 공격 아이템 충돌
+      ctx.font = "26px Arial";
+      for (let i=powerItems.length-1; i>=0; i--) {
+        let p = powerItems[i];
+        p.y += 2;
+        ctx.fillText(p.emoji, p.x, p.y + p.h);
+        if (isColliding(player, p)) {
+          powerItems.splice(i,1);
+          player.canAttack = true;
+          alert("⚡ 공격 아이템 획득! 5초 동안 적을 처치할 수 있습니다!");
+          setTimeout(() => { player.canAttack = false; }, 5000);
+        } else if (p.y > 400) {
+          powerItems.splice(i,1);
+        }
+      }
+
+      // 체력 회복 아이템 충돌
+      ctx.font = "26px Arial";
+      for (let i=healItems.length-1; i>=0; i--) {
+        let h = healItems[i];
+        h.y += 2;
+        ctx.fillText(h.emoji, h.x, h.y + h.h);
+        if (isColliding(player, h)) {
+          healItems.splice(i,1);
+          player.hp += 1;
+          alert("❤️ 체력 회복! 현재 체력: "+player.hp);
+        } else if (h.y > 400) {
+          healItems.splice(i,1);
+        }
+      }
+
+      // 빛의 검 아이템 충돌
+      ctx.font = "28px Arial";
+      for (let i=lightSwords.length-1; i>=0; i--) {
+        let l = lightSwords[i];
+        l.y += 2;
+        ctx.fillText(l.emoji, l.x, l.y + l.h);
+        if (isColliding(player, l)) {
+          lightSwords.splice(i,1);
+          player.hasLightSword = true;
+          alert("🔆 빛의 검 획득! 모든 적을 쉽게 처치할 수 있습니다!");
+          setTimeout(() => { player.hasLightSword = false; }, 10000);
+        } else if (l.y > 400) {
+          lightSwords.splice(i,1);
+        }
+      }
+
+      // HUD 업데이트
+      let status = `레벨: ${level} | 점수: ${score} | 체력: ${player.hp}`;
+      if (player.hasLightSword) status += " | 빛의 검 발동!";
+      else if (player.canAttack) status += " | 공격 가능!";
+      document.getElementById("info").textContent = status;
+
+      requestAnimationFrame(gameLoop);
+    }
+
+    // 생성 타이머
+    setInterval(spawnMonster, 2000);
+    setInterval(spawnSword, 3000);
+    setInterval(spawnPowerItem, 10000);
+    setInterval(spawnHealItem, 15000);
+    setInterval(spawnLightSword, 20000);
+
+    gameLoop();
+  </script>
+</body>
+</html>
